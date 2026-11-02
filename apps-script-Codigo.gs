@@ -821,6 +821,33 @@ function recorrentes_() {
   if (ok.length && MEU_CHAT_ID) msg_(MEU_CHAT_ID, '🔁 Lançamentos recorrentes de hoje: ' + ok.map(esc_).join(', '));
 }
 
+/* ---------- METAS (objetivos de compra) ---------- */
+const HM = ['id','nome','valor','prazo','carteira','imagem','categoria','feita','n','atualizado','excluido'];
+function metaSheet_() {
+  let s = sh_('Metas');
+  if (!s) { s = SpreadsheetApp.getActive().insertSheet('Metas'); s.appendRow(HM); s.setFrozenRows(1); s.getRange('A:A').setNumberFormat('@'); s.getRange('D:D').setNumberFormat('@'); }
+  return s;
+}
+function metas_() {
+  const s = metaSheet_(), n = s.getLastRow();
+  if (n < 2) return [];
+  return s.getRange(2, 1, n - 1, HM.length).getValues().filter(r => S_(r[0]) && Number(r[10]) !== 1)
+    .map(r => ({ id: S_(r[0]), nome: S_(r[1]), valor: Number(r[2]) || 0, prazo: d_(r[3]) === '' ? '' : d_(r[3]), carteira: S_(r[4]), img: S_(r[5]), cat: S_(r[6]), feita: Number(r[7]) === 1, n: Number(r[8]) || 0 }));
+}
+// cria ou atualiza (só os campos enviados) uma meta; del=1 apaga
+function metaUpsert_(o) {
+  comLock_(() => {
+    const s = metaSheet_(), n = s.getLastRow(), id = S_(o.id);
+    if (!id) throw new Error('meta sem id');
+    const ids = n < 2 ? [] : s.getRange(2, 1, n - 1, 1).getValues().flat().map(S_), i = ids.indexOf(id);
+    const old = i >= 0 ? s.getRange(i + 2, 1, 1, HM.length).getValues()[0] : [id, '', 0, '', '', '', '', 0, 0, 0, 0];
+    const pick = (k, j) => o[k] != null ? o[k] : old[j];
+    const row = [id, S_(pick('nome', 1)).slice(0, 80), Number(pick('valor', 2)) || 0, S_(pick('prazo', 3)), S_(pick('carteira', 4)), S_(pick('imagem', 5)).slice(0, 500),
+      S_(pick('categoria', 6)), pick('feita', 7) ? 1 : 0, Number(pick('n', 8)) || 0, Date.now(), o.del ? 1 : 0];
+    if (i >= 0) s.getRange(i + 2, 1, 1, HM.length).setValues([row]); else s.appendRow(row);
+  });
+}
+
 /* ---------- API PARA A HTML ---------- */
 // Previstos que vencem hoje, amanhã ou já passaram sem confirmar (usado pelos avisos do app)
 function agenda_() {
@@ -833,7 +860,7 @@ function agenda_() {
 
 function sync_(desde) {
   const agora = Date.now();
-  return { agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_() };
+  return { agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_(), metas: metas_() };
 }
 function api_(b) {
   if (b.acao === 'sync') return sync_(Number(b.desde || 0));
@@ -852,6 +879,8 @@ function api_(b) {
         else if (o.op === 'receber')mudar_(x => x[0] === S_(o.id) && prev_(x), x => { x[14] = 0; x[1] = o.data || hoje_(); if (o.valor) x[3] = o.valor; });
         else if (o.op === 'adiantar') adiantar_(o.descricao, o.qtd);
         else if (o.op === 'carteira') upsert_('Carteiras', o.nome, [o.nome, Number(o.ini) || 0]);
+        else if (o.op === 'meta') metaUpsert_(o);
+        else if (o.op === 'metadel') metaUpsert_({ id: o.id, del: 1 });
         else if (o.op === 'orc') upsert_('Orcamentos', o.categoria, [o.categoria, Number(o.limite) || 0]);
         return { id: o.id || o.nome, ok: 1 };
       } catch (e) { log_(e); return { id: o.id || o.nome, erro: String(e.message) }; }
