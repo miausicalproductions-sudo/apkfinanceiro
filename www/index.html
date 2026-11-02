@@ -139,6 +139,8 @@ a{color:var(--lima)}
 .qdois{display:grid;grid-template-columns:1fr 1fr;gap:10px}.qlado{border-radius:22px;padding:12px 14px;background:var(--card2)}.qlado.eu{border:1.5px solid var(--lima)}.qlado.pai{border:1.5px solid var(--azul)}
 .qlado .qn{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--mut)}.qlado .qn i{width:10px;height:10px;border-radius:50%;display:block}.qlado .qv{font-size:21px;font-weight:600;letter-spacing:-.03em;margin:4px 0 2px}.qlado .qs{font-size:12px;color:var(--mut)}
 .qtag{font-style:normal;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;margin-right:6px;color:#fff}.qtag.eu{background:var(--lima)}.qtag.pai{background:var(--azul)}
+.chipsw{border:0;border-radius:999px;padding:7px 12px;font:inherit;font-weight:600;font-size:12.5px;background:rgba(255,255,255,.14);color:var(--tx);backdrop-filter:blur(8px)}.chipsw.emp{background:var(--azul);color:#fff}
+.dist .f label{font-size:13px}.dist select,.dist input{font-size:15px}.stt{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}.stt.ok{background:var(--lima);color:var(--on)}.stt.er{background:var(--verm);color:#fff}
 </style>
 </head>
 <body>
@@ -211,16 +213,17 @@ const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
 const num = t => { let s = String(t).trim().replace(/^R\$\s*/i, ''); const neg = s[0] === '-'; s = s.replace(/^[-+]/, '');
   s = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(',', '.');
   const v = parseFloat(s); return isNaN(v) ? null : (neg ? -v : v); };
-const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, srvVer: null, pf: '', todos: false, rede: null };
+const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], socios: [], repasses: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, srvVer: null, pf: '', todos: false, rede: null };
 
-function salvarLocal() { try { localStorage.setItem('fin_state', JSON.stringify({linhas: S.linhas, carteiras: S.carteiras, orc: S.orc, metas: S.metas, rotinas: S.rotinas, desde: S.desde, fila: S.fila})); } catch (e) {} clearTimeout(tAg); tAg = setTimeout(() => { try { gravarAgenda(); } catch (e) {} }, 800); }
+function salvarLocal() { try { localStorage.setItem(KP('fin_state'), JSON.stringify({linhas: S.linhas, socios: S.socios, repasses: S.repasses, carteiras: S.carteiras, orc: S.orc, metas: S.metas, rotinas: S.rotinas, desde: S.desde, fila: S.fila})); } catch (e) {} clearTimeout(tAg); tAg = setTimeout(() => { try { gravarAgenda(); } catch (e) {} }, 800); }
 function carregarLocal() {
-  try { const c = JSON.parse(localStorage.getItem('fin_cfg') || '{}'); S.cfg.url = c.url || ''; S.cfg.chave = c.chave || ''; } catch (e) {}
-  try { const o = JSON.parse(localStorage.getItem('fin_state') || '{}'); if (o.linhas) Object.assign(S, {linhas: o.linhas, carteiras: o.carteiras || [], orc: o.orc || [], metas: o.metas || [], rotinas: o.rotinas || [], desde: o.desde || 0, fila: o.fila || []}); } catch (e) {}
+  try { const c = JSON.parse(localStorage.getItem(KP('fin_cfg')) || '{}'); S.cfg.url = c.url || ''; S.cfg.chave = c.chave || ''; } catch (e) {}
+  try { const o = JSON.parse(localStorage.getItem(KP('fin_state')) || '{}'); if (o.linhas) Object.assign(S, {linhas: o.linhas, socios: o.socios || [], repasses: o.repasses || [], carteiras: o.carteiras || [], orc: o.orc || [], metas: o.metas || [], rotinas: o.rotinas || [], desde: o.desde || 0, fila: o.fila || []}); } catch (e) {}
 }
 // grava link e chave também onde o widget nativo consegue ler (Preferences do Capacitor)
 async function salvarCfg() {
-  try { localStorage.setItem('fin_cfg', JSON.stringify(S.cfg)); } catch (e) {}
+  try { localStorage.setItem(KP('fin_cfg'), JSON.stringify(S.cfg)); } catch (e) {}
+  if (EMP) return;      // widget e avisos do Android são só da conta pessoal
   try { const P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Preferences;
     if (P) { await P.set({key: 'url', value: S.cfg.url}); await P.set({key: 'chave', value: S.cfg.chave}); } } catch (e) {}
 }
@@ -244,6 +247,8 @@ function mesclar(r) {
   if (r.orcamentos) S.orc = r.orcamentos;
   if (r.metas) S.metas = r.metas;
   if (r.rotinas) S.rotinas = r.rotinas;
+  if (r.socios) S.socios = r.socios;
+  if (r.repasses) S.repasses = r.repasses;
   if (r.agora) { S.desde = r.agora - 2000; S.srvVer = Number(r.ver) || 0; }
   salvarLocal();
 }
@@ -289,6 +294,8 @@ function aplicar(o) {
     ['nome', 'valor', 'prazo', 'carteira', 'cat', 'n'].forEach(k => { const kk = k === 'cat' ? 'categoria' : k; if (o[kk] != null) m[k] = o[kk]; }); if (o.imagem != null) m.img = o.imagem; if (o.feita != null) m.feita = !!o.feita; }
   else if (o.op === 'rotina') { let r = S.rotinas.find(x => x.id === o.id); if (!r) { r = {id: o.id, desc: '', valor: 0, tipo: 'S', freq: 'mes', dia: 1, cat: '', cart: '', ativa: true}; S.rotinas.push(r); }
     if (o.descricao != null) r.desc = o.descricao; ['valor', 'tipo', 'freq', 'dia'].forEach(k => { if (o[k] != null) r[k] = o[k]; }); if (o.ativa != null) r.ativa = !!o.ativa; }
+  else if (o.op === 'socio') { if (!S.socios.some(x => x.nome === o.nome)) S.socios.push({nome: o.nome, ok: !!(o.url && o.chave)}); else S.socios.forEach(x => { if (x.nome === o.nome && o.url && o.chave) x.ok = true; }); }
+  else if (o.op === 'sociodel') S.socios = S.socios.filter(x => x.nome !== o.nome);
   else if (o.op === 'rotinadel') S.rotinas = S.rotinas.filter(x => x.id !== o.id);
   else if (o.op === 'metadel') S.metas = S.metas.filter(x => x.id !== o.id);
   else if (o.op === 'orc') { const i = S.orc.findIndex(c => c.categoria === o.categoria); const c = {categoria: o.categoria, limite: Number(o.limite) || 0}; if (i >= 0) S.orc[i] = c; else S.orc.push(c); }
@@ -438,6 +445,7 @@ const AV = () => { try { return window.Capacitor && Capacitor.Plugins && (Capaci
 const nativo = () => { try { return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); } catch (e) { return false; } };
 let ultAgenda = '', tAg = null;
 function gravarAgenda() {
+  if (EMP) return;
   try {
     const P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Preferences; if (!P) return;
     const lim = somaDias(isoHoje(), 60);
@@ -701,15 +709,20 @@ function cartaoPrevisto() {
 const VSERV = 5;
 const PAIS = false;   // versão iPhone da Thaís liga isto (tools/build_pwa.py): campo "quem pagou" (Eu / Pai)
 const PAGN = {eu: 'Eu', pai: 'Pai'};
-const avisoServ = () => S.srvVer !== null && S.srvVer < VSERV ? `<div class="card" style="border-color:#5a1f22"><b style="color:var(--verm)">${ic('alert')} O código do Apps Script está desatualizado</b><div class="mut" style="font-size:13.5px;margin:6px 0 10px">Sem atualizar, parcelas, metas e previstos ficam errados na planilha. Abra o código novo, copie tudo, cole no Apps Script no lugar do antigo e crie uma nova versão em Implantar > Gerenciar implantações > editar. Depois rode a função <b style="color:#fff">atualizar</b> uma vez.</div><a class="btn pri full" href="https://raw.githubusercontent.com/miausicalproductions-sudo/apkfinanceiro/main/apps-script-Codigo.gs" target="_blank" rel="noopener">Abrir o código novo</a></div>` : '';
+// Conta da empresa: mesmo app, outro Apps Script/planilha, estado guardado à parte (prefixo e_)
+const EMP = (() => { try { return localStorage.getItem('fin_perfil') === 'emp'; } catch (e) { return false; } })();
+const EMPON = (() => { try { return EMP || localStorage.getItem('fin_emp') === '1'; } catch (e) { return false; } })();
+const KP = k => EMP ? 'e_' + k : k;
+const VNEED = Math.max(VSERV, EMP ? 7 : 0);
+const avisoServ = () => S.srvVer !== null && S.srvVer < VNEED ? `<div class="card" style="border-color:#5a1f22"><b style="color:var(--verm)">${ic('alert')} O código do Apps Script está desatualizado</b><div class="mut" style="font-size:13.5px;margin:6px 0 10px">Sem atualizar, parcelas, metas e previstos ficam errados na planilha. Abra o código novo, copie tudo, cole no Apps Script no lugar do antigo e crie uma nova versão em Implantar > Gerenciar implantações > editar. Depois rode a função <b style="color:#fff">atualizar</b> uma vez.</div><a class="btn pri full" href="https://raw.githubusercontent.com/miausicalproductions-sudo/apkfinanceiro/main/apps-script-Codigo.gs" target="_blank" rel="noopener">Abrir o código novo</a></div>` : '';
 function telaHome() {
   const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7)), pv = projecao();
   const pos = nomes.reduce((a, k) => a + Math.max(x.s[k], 0), 0) || 1;
   const rec = vivas().filter(r => !r.prev && r.data <= h).sort((a, b) => b.at - a.at);
   const lista = rec.slice(0, S.todos ? 60 : 8), ncat = Object.keys(mr.cat).length;
-  return `<div class="hero"><div class="row1"><div class="logo">${ic('coin')}</div>
+  return `<div class="hero"><div class="row1"><div style="display:flex;align-items:center;gap:8px"><div class="logo">${ic('coin')}</div>${EMPON ? `<button class="chipsw ${EMP ? 'emp' : ''}" data-a="perfil" data-p="${EMP ? '' : 'emp'}">${EMP ? 'Empresa' : 'Pessoal'} ⇄ ${EMP ? 'Pessoal' : 'Empresa'}</button>` : ''}</div>
     <div class="pilha">${nomes.slice(0, 3).map(k => banco(k)).join('')}<span class="dot ${S.rede === false || S.fila.length ? 'off' : ''}"></span></div></div>
-    <div><div class="lbl">Saldo total agora</div><div class="big">${brl(x.total)}</div>${pv.pts.length > 1 ? `<div class="lbl" data-a="pf" data-f="" style="margin-top:6px">Previsto ${brl(pv.fim)} ${S.pv === 'tudo' ? 'após tudo que está agendado' : 'até o fim de ' + nomeMes(pv.lim)} ${ic('right')}</div>` : ''}</div></div>
+    <div><div class="lbl">${EMP ? 'Empresa • saldo agora' : 'Saldo total agora'}</div><div class="big">${brl(x.total)}</div>${pv.pts.length > 1 ? `<div class="lbl" data-a="pf" data-f="" style="margin-top:6px">Previsto ${brl(pv.fim)} ${S.pv === 'tudo' ? 'após tudo que está agendado' : 'até o fim de ' + nomeMes(pv.lim)} ${ic('right')}</div>` : ''}</div></div>
   ${avisoServ()}
   <div class="dois">
    <div class="mini" data-a="tab" data-t="mais"><div class="cab"><div style="display:flex">${nomes.slice(0, 3).map(k => banco(k)).join('')}</div><span class="ch">${ic('right')}</span></div>
@@ -769,9 +782,19 @@ function telaMes() {
   <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 14px"><button class="btn sm" data-a="mm" data-d="-1" aria-label="Mês anterior">${ic('left')}</button><b style="font-size:17px;text-transform:capitalize">${MESES[m - 1]} ${y}</b><button class="btn sm" data-a="mm" data-d="1" aria-label="Próximo mês">${ic('right')}</button></div>
   <div class="pills">${[['rd', 'Rece. vs Desp.'], ['gt', 'Gastos'], ['dy', 'Dias']].map(([k, n]) => `<button class="pill ${S.mview === k ? 'on' : ''}" data-a="mv" data-v="${k}">${n}</button>`).join('')}</div>${corpo}`;
 }
+function cartaoEmpresa() {
+  if (!EMPON) return `<div class="sec" style="margin-top:0"><h2>Empresa</h2></div><div class="card"><div class="hint" style="margin:0 0 12px">Tem uma empresa com sócios? Ative a conta da empresa neste aparelho para ver o caixa compartilhado e distribuir as entradas.</div><button class="btn full" data-a="empon">Ativar conta da empresa</button></div>`;
+  const rp = S.repasses.slice().reverse().slice(0, 12);
+  return `<div class="sec" style="margin-top:0"><h2>Conta</h2></div><div class="card"><div class="seg" id="sper"><button class="${EMP ? '' : 'on'}" data-a="perfil" data-p="">Pessoal</button><button class="${EMP ? 'on' : ''}" data-a="perfil" data-p="emp">Empresa</button></div>
+   <div class="hint" style="margin:10px 0 0">${EMP ? 'Você está vendo o caixa da empresa (outra planilha). Cada conta tem o seu link e a sua chave.' : 'Troque para Empresa para ver o caixa da empresa.'}</div></div>`
+  + (EMP ? `<div class="sec"><h2>Sócios</h2><button class="btn sm" data-a="novosocio">${ic('plus')} Sócio</button></div>
+   <div class="card" style="padding:6px 18px">${S.socios.length ? S.socios.map(x => `<div class="row" data-a="editsocio" data-n="${esc(x.nome)}"><div class="ico">${ic('bank')}</div><div class="t"><b>${esc(x.nome)}</b><span>${x.ok ? 'conectado ao app dele(a)' : 'falta o link e a chave'}</span></div></div>`).join('') : '<div class="empty">Cadastre cada sócio com o link e a chave do app pessoal dele(a). É assim que o salário chega sozinho na conta de cada um.</div>'}</div>
+   <div class="sec"><h2>Repasses</h2></div>
+   <div class="card" style="padding:6px 18px">${rp.length ? rp.map(x => `<div class="row"${x.status === 'ok' ? '' : ` data-a="repetirdist" data-id="${esc(x.id.replace(/-\d+$/, ''))}"`}><div class="t"><b>${esc(x.socio)} • ${brl(x.valor)}</b><span>${dt(x.data)}${x.status === 'ok' ? ' • chegou no app' : ' • não chegou: ' + esc(x.msg || 'erro') + ' (toque para tentar de novo)'}</span></div><span class="stt ${x.status === 'ok' ? 'ok' : 'er'}">${x.status === 'ok' ? 'enviado' : 'falhou'}</span></div>`).join('') : '<div class="empty">Nenhum repasse ainda. Abra uma entrada da empresa e toque em Distribuir.</div>'}</div>` : '');
+}
 function telaMais() {
   const P = parcelas(), c = S.cfg;
-  return `<h1 class="title">Ajustes<br><span>e conexão.</span></h1>
+  return `<h1 class="title">Ajustes<br><span>e conexão.</span></h1>${cartaoEmpresa()}
   <div class="sec" style="margin-top:0"><h2>Parcelamentos</h2></div>
   <div class="card">${P.length ? P.map(x => `<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between"><b style="font-size:16px">${esc(x.d)}</b><span>${x.n}x de ${brl(x.val)}</span></div>
    <div class="prog"><i style="width:${Math.round(x.pag / x.n * 100)}%"></i></div>
@@ -779,7 +802,7 @@ function telaMais() {
    <button class="btn sm" style="margin-top:9px" data-a="adiantar" data-k="${esc(x.k)}">Adiantar uma parcela</button></div>`).join('') + `<b>Falta pagar: ${brl(P.reduce((a, x) => a + x.vf, 0))}</b>` : '<div class="empty">Nenhuma parcela pendente.</div>'}</div>
   <div class="sec"><h2>Contas</h2><button class="btn sm" data-a="novacart">${ic('plus')} Conta</button></div>
   <div class="card" style="padding:6px 18px">${S.carteiras.map(k => `<div class="row">${banco(k.nome, 1)}<div class="t"><b>${esc(k.nome)}</b><span>saldo inicial ${brl(k.ini)}</span></div><button class="btn sm" data-a="ajuste" data-c="${esc(k.nome)}">Ajustar</button></div>`).join('') || '<div class="empty">Sem contas.</div>'}</div>
-  <div class="hint" style="margin:-4px 6px 12px">Código do Apps Script: ${S.srvVer === null ? 'ainda não conferido' : S.srvVer >= VSERV ? 'atualizado ✔ (v' + S.srvVer + ')' : 'DESATUALIZADO (v' + S.srvVer + ', o certo é v' + VSERV + ')'}</div>
+  <div class="hint" style="margin:-4px 6px 12px">Código do Apps Script: ${S.srvVer === null ? 'ainda não conferido' : S.srvVer >= VNEED ? 'atualizado ✔ (v' + S.srvVer + ')' : 'DESATUALIZADO (v' + S.srvVer + ', o certo é v' + VNEED + ')'}</div>
   <div class="sec"><h2>Avisos</h2></div>
   <div class="card"><div class="hint" style="margin:0 0 12px">O app avisa na véspera e no dia de cada vencimento (às 9h) e lembra de novo às 18h se ainda não foi pago. Vale para contas previstas e parcelas.</div>
    <div style="display:flex;gap:8px"><button class="btn pri" style="flex:1" data-a="avisoperm">${ic('bell')} Ativar avisos</button><button class="btn" data-a="avisotestar">Testar</button></div></div>
@@ -1005,11 +1028,43 @@ function abrirDet(id) {
   ${r.tipo !== 'T' && !r.grupo ? repetirSel((achaRot(r.tipo, r.desc) || {}).freq || '') : ''}
   <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${r.comp ? `<a class="btn" href="${esc(r.comp)}" target="_blank" rel="noopener">${ic('clip')} Ver comprovante</a>` : ''}
    <label class="btn" style="margin:0">${ic('scan')} ${r.comp ? 'Trocar' : 'Anexar'} comprovante<input id="ea" type="file" accept="image/*,application/pdf" style="display:none"></label></div>
+  ${EMP && r.tipo === 'E' && !r.prev ? `<button class="btn pri full" style="margin-bottom:10px" data-a="distribuir" data-id="${esc(id)}">Distribuir esta entrada${distribuido(id) ? ' (já distribuído ' + brl(distribuido(id)) + ')' : ''}</button>` : ''}
   ${r.grupo ? `<button class="btn no full" style="margin-bottom:10px" data-a="apagargrupo" data-id="${esc(r.grupo)}">${ic('trash')} Apagar o parcelamento inteiro (${Object.values(S.linhas).filter(x => x.grupo === r.grupo && !x.del).length} parcelas)</button>` : ''}
   <div style="display:flex;gap:10px"><button class="btn no" data-a="apagar" data-id="${esc(id)}" aria-label="Apagar só esta">${ic('trash')}${r.grupo ? ' só esta' : ''}</button><button class="btn pri" style="flex:1" data-a="salvaredit" data-id="${esc(id)}">Salvar</button></div>`);
   if ($('#sqp')) $('#sqp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $('#sqp').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
   $('#ea').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; aviso('Enviando comprovante…');
     try { const x = await enviarArquivo(f); fechar(); await fazer([{op: 'anexar', id, url: x.url}], 'Comprovante anexado'); } catch (er) { aviso(er.message, 'bad'); } });
+}
+const distribuido = id => S.repasses.filter(x => x.origem === id).reduce((a, x) => a + x.valor, 0);
+let distF = {};
+function abrirDistribuir(id) {
+  const r = S.linhas[id]; if (!r) return; const livre = Math.max(0, r2(r.valor - distribuido(id)));
+  if (!S.socios.length) return aviso('Cadastre os sócios primeiro (Ajustes, Sócios).', 'bad');
+  let res0 = 30; try { res0 = Number(localStorage.getItem('fin_reserva')); if (!(res0 >= 0 && res0 <= 100)) res0 = 30; } catch (e) {}
+  distF = {origem: id, livre, cart: r.cart, mes: r.data.slice(0, 7), cand: {}};
+  folha(`<div class="dist"><h3>Distribuir ${brl(r.valor)}</h3><div class="hint" style="margin-top:-8px">${distribuido(id) ? 'Já distribuído: ' + brl(distribuido(id)) + '. ' : ''}Disponível para distribuir: <b style="color:var(--tx)">${brl(livre)}</b>. O que não for distribuído fica no caixa da empresa.</div>
+  <div class="two"><div class="f"><label>Fica na empresa (%)</label><input id="dres" inputmode="numeric" value="${res0}"></div><div class="f"><label>&nbsp;</label><button class="btn full" data-a="distcalc">Dividir o resto igualmente</button></div></div>
+  ${S.socios.map((x, i) => `<div class="card" style="padding:12px 14px;margin-bottom:10px"><b>${esc(x.nome)}</b>${x.ok ? '' : ' <span class="stt er">sem link</span>'}
+    <div class="two" style="margin-top:8px"><div class="f"><label>Salário (R$)</label><input data-ds="${i}" inputmode="decimal" placeholder="0,00"></div>
+    <div class="f"><label>Já lancei este mês?</label><select data-dv="${i}"><option value="">Criar nova</option></select></div></div><div class="hint" data-dh="${i}" style="margin:0"></div></div>`).join('')}
+  <div class="card" style="padding:10px 16px;margin-bottom:12px"><div class="leg"><span>Total em salários</span><b id="dtot">R$ 0,00</b></div><div class="leg"><span>Fica na empresa</span><b id="dfica">${brl(livre)}</b></div></div>
+  <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Cancelar</button><button class="btn pri" style="flex:1" data-a="okdist">Distribuir e enviar</button></div></div>`);
+  const tot = () => { const t = S.socios.reduce((a, x, i) => a + (num($(`[data-ds="${i}"]`).value) || 0), 0); $('#dtot').textContent = brl(t); $('#dfica').textContent = brl(livre - t); $('#dfica').style.color = t > livre + .004 ? 'var(--verm)' : ''; };
+  const dica = i => { const sel = $(`[data-dv="${i}"]`), v = num($(`[data-ds="${i}"]`).value) || 0, h = $(`[data-dh="${i}"]`); if (!sel || !h) return; const c = (distF.cand[i] || []).find(z => z.id === sel.value);
+    h.textContent = c ? (Math.abs(c.valor - v) < .005 ? 'Vai usar a entrada que já existe (mesmo valor), sem duplicar.' : 'A entrada de ' + brl(c.valor) + ' vai passar a ser de ' + brl(v) + ' (sem duplicar).') : ''; };
+  document.querySelectorAll('[data-ds]').forEach(e => e.addEventListener('input', () => { tot(); dica(e.dataset.ds); }));
+  document.querySelectorAll('[data-dv]').forEach(e => e.addEventListener('change', () => dica(e.dataset.dv)));
+  distF.tot = tot; distF.dica = dica;
+  S.socios.forEach(async (x, i) => { if (!x.ok) return; try { const j = await api({acao: 'candidatos', socio: x.nome, mes: distF.mes}); const sel = $(`[data-dv="${i}"]`); if (!sel) return; distF.cand[i] = j.itens || [];
+    distF.cand[i].forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = dt(c.data).slice(0, 5) + ' • ' + c.desc + ' • ' + brl(c.valor); sel.appendChild(o); }); } catch (e) { const h = $(`[data-dh="${i}"]`); if (h) h.textContent = 'Não consegui ver as entradas de ' + x.nome + ' (' + e.message + '). Vai criar uma entrada nova.'; } });
+}
+async function enviarDist(id, origem, data, cart, partes) {
+  aviso('Enviando…');
+  try { const r = await api({acao: 'distribuir', id, origem, data, carteira: cart, partes, desde: S.desde}); mesclar(r); reaplicar();
+    const mau = (r.res || []).filter(x => !x.ok);
+    if (mau.length) aviso(mau.map(x => x.socio + ': ' + x.erro).join(' • ') + '. Toque no repasse em Ajustes para tentar de novo.', 'bad'); else aviso('Distribuído: cada um já recebeu na conta pessoal', 'good'); }
+  catch (e) { aviso(e.message, 'bad'); }
+  render();
 }
 function abrirAjuste(c) {
   const x = saldos();
@@ -1046,6 +1101,34 @@ async function acao(a, el) {
   else if (a === 'ajuste') abrirAjuste(d.c);
   else if (a === 'receber') abrirReceber(d.id);
   else if (a === 'orc') abrirOrc();
+  else if (a === 'perfil') { try { localStorage.setItem('fin_perfil', d.p || ''); } catch (e) {} location.reload(); }
+  else if (a === 'empon') { try { localStorage.setItem('fin_emp', '1'); localStorage.setItem('fin_perfil', 'emp'); } catch (e) {} location.reload(); }
+  else if (a === 'distribuir') abrirDistribuir(d.id);
+  else if (a === 'distcalc') { const pc = Math.min(100, Math.max(0, num($('#dres').value) || 0)), n = S.socios.length, parte = Math.floor(distF.livre * (100 - pc) / 100 / n * 100) / 100;
+    document.querySelectorAll('[data-ds]').forEach(e => { e.value = parte ? String(parte).replace('.', ',') : ''; }); distF.tot(); S.socios.forEach((x, i) => distF.dica(i)); }
+  else if (a === 'okdist') {
+    const partes = S.socios.map((x, i) => ({socio: x.nome, valor: num($(`[data-ds="${i}"]`).value) || 0, vinculo: $(`[data-dv="${i}"]`).value || ''})).filter(x => x.valor > 0);
+    if (!partes.length) return aviso('Digite o salário de pelo menos um sócio.', 'bad');
+    if (partes.reduce((a, x) => a + x.valor, 0) > distF.livre + .004) return aviso('A soma passa do valor disponível.', 'bad');
+    try { localStorage.setItem('fin_reserva', String(num($('#dres').value) || 0)); } catch (e) {}
+    const o = S.linhas[distF.origem]; fechar(); await enviarDist(uid(), distF.origem, isoHoje(), distF.cart, partes);
+  }
+  else if (a === 'repetirdist') {
+    const rs = S.repasses.filter(x => x.id.replace(/-\d+$/, '') === d.id); if (!rs.length) return;
+    await enviarDist(d.id, rs[0].origem, rs[0].data, (S.linhas[rs[0].origem] || {}).cart, rs.map(x => ({socio: x.socio, valor: x.valor, vinculo: x.vinculo})));
+  }
+  else if (a === 'novosocio' || a === 'editsocio') {
+    folha(`<h3>${a === 'editsocio' ? esc(d.n) : 'Novo sócio'}</h3>
+    ${a === 'editsocio' ? '' : '<div class="f"><label>Nome</label><input id="sn" placeholder="Thaís" autocomplete="off"></div>'}
+    <div class="f"><label>Link do Apps Script pessoal dele(a) (termina em /exec)</label><input id="su" placeholder="https://script.google.com/macros/s/.../exec" autocapitalize="off" autocomplete="off"></div>
+    <div class="f"><label>Chave (CHAVE_API) dele(a)</label><input id="sk" type="password" autocomplete="off"></div>
+    <div class="hint">A empresa só usa isso para lançar a entrada de salário (ou ajustar a que já existe). Nada é apagado.</div>
+    <div style="display:flex;gap:10px">${a === 'editsocio' ? `<button class="btn no" data-a="socioapagar" data-n="${esc(d.n)}" aria-label="Remover">${ic('trash')}</button>` : '<button class="btn" data-a="fechar">Cancelar</button>'}<button class="btn pri" style="flex:1" data-a="oksocio" data-n="${esc(d.n || '')}">Salvar</button></div>`);
+  }
+  else if (a === 'oksocio') { const nome = (d.n || ($('#sn') ? $('#sn').value : '')).trim(), url = $('#su').value.trim(), chave = $('#sk').value.trim();
+    if (!nome) return aviso('Diga o nome do sócio.', 'bad'); if (!/^https:\/\//.test(url) || !chave) return aviso('Cole o link (https://…/exec) e a chave.', 'bad');
+    fechar(); await fazer([{op: 'socio', nome, url, chave}], 'Sócio salvo'); }
+  else if (a === 'socioapagar') { fechar(); await fazer([{op: 'sociodel', nome: d.n}], 'Sócio removido'); }
   else if (a === 'novacart') {
     folha(`<h3>Nova conta</h3><div class="f"><label>Nome</label><input id="cn" placeholder="Cartão, Poupança…"></div><div class="f"><label>Saldo inicial</label><input id="ci" inputmode="decimal" placeholder="0,00"></div>
     <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Cancelar</button><button class="btn pri" style="flex:1" data-a="oknovacart">Criar</button></div>`);

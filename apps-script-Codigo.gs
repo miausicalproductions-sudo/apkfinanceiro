@@ -28,7 +28,7 @@ const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'T
 //          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem | 16 pagador (vazio = quem registra; 'pai' = pago pelo pai)
 const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem','pagador'];
 const NC = H.length;
-const VERSAO = 6;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
+const VERSAO = 7;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
 
 /* ---------- INSTALAÇÃO ---------- */
 function instalar() {
@@ -875,6 +875,79 @@ function rotinaUpsert_(o) {
   });
 }
 
+
+/* ---------- EMPRESA: sócios e repasses (usado só no Apps Script da empresa) ---------- */
+const HSO = ['nome','url','chave','atualizado','excluido'];
+const HRP = ['id','origem','socio','valor','vinculo','status','data','msg','atualizado'];
+function aba_(nome, h) {
+  let s = sh_(nome);
+  if (!s) { s = SpreadsheetApp.getActive().insertSheet(nome); s.appendRow(h); s.setFrozenRows(1); s.getRange('A:A').setNumberFormat('@'); }
+  return s;
+}
+function upsertAba_(nome, h, chaveIdx, row) {
+  comLock_(() => {
+    const s = aba_(nome, h), n = s.getLastRow(), ks = n < 2 ? [] : s.getRange(2, chaveIdx + 1, n - 1, 1).getValues().flat().map(S_), i = ks.indexOf(S_(row[chaveIdx]));
+    if (i >= 0) s.getRange(i + 2, 1, 1, h.length).setValues([row]); else s.appendRow(row);
+  });
+}
+function sociosFull_() {
+  const s = aba_('Socios', HSO), n = s.getLastRow();
+  if (n < 2) return [];
+  return s.getRange(2, 1, n - 1, HSO.length).getValues().filter(r => S_(r[0]) && Number(r[4]) !== 1).map(r => ({ nome: S_(r[0]), url: S_(r[1]), chave: S_(r[2]) }));
+}
+const socios_ = () => sociosFull_().map(x => ({ nome: x.nome, ok: !!(x.url && x.chave) }));      // nunca devolve a chave
+function socioUpsert_(o) {
+  const nome = S_(o.nome).slice(0, 40); if (!nome) throw new Error('sócio sem nome');
+  const old = sociosFull_().find(x => x.nome === nome) || { url: '', chave: '' };
+  upsertAba_('Socios', HSO, 0, [nome, o.del ? old.url : S_(o.url || old.url), o.del ? old.chave : S_(o.chave || old.chave), Date.now(), o.del ? 1 : 0]);
+}
+function repasses_() {
+  const s = aba_('Repasses', HRP), n = s.getLastRow();
+  if (n < 2) return [];
+  return s.getRange(2, 1, n - 1, HRP.length).getValues().filter(r => S_(r[0])).slice(-200)
+    .map(r => ({ id: S_(r[0]), origem: S_(r[1]), socio: S_(r[2]), valor: Number(r[3]) || 0, vinculo: S_(r[4]), status: S_(r[5]), data: d_(r[6]), msg: S_(r[7]) }));
+}
+function chamar_(s, corpo) {
+  const r = UrlFetchApp.fetch(s.url, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+    payload: JSON.stringify(Object.assign({ chave: s.chave }, corpo)) });
+  let j; try { j = JSON.parse(r.getContentText()); } catch (e) { throw new Error('o app do sócio não respondeu direito (confira o link)'); }
+  if (j.erro) throw new Error(j.erro);
+  return j;
+}
+// entradas (não previstas) do mês, para escolher qual já foi lançada como salário
+function entradas_(mes) {
+  return rows_().filter(r => r[12] != 1 && r[2] === 'E' && !prev_(r) && r[4] !== 'Ajuste' && S_(r[1]).slice(0, 7) === S_(mes))
+    .map(r => ({ id: r[0], data: r[1], valor: Number(r[3]), desc: S_(r[5]) || S_(r[4]) })).sort((a, b) => b.data.localeCompare(a.data));
+}
+function candidatos_(b) {
+  const s = sociosFull_().find(x => x.nome === S_(b.socio));
+  if (!s || !s.url || !s.chave) throw new Error('sócio sem link/chave');
+  return { ok: 1, itens: chamar_(s, { acao: 'entradas', mes: b.mes || hoje_().slice(0, 7) }).itens || [] };
+}
+// divide uma entrada da empresa: lança a saída "Salário" aqui e a entrada (ou ajusta a já lançada) no app de cada sócio. Idempotente.
+function distribuir_(b) {
+  const id = S_(b.id); if (!id) throw new Error('distribuição sem id');
+  const data = b.data || hoje_(), cart = b.carteira || CARTEIRA_PADRAO, lista = sociosFull_(), out = [];
+  (b.partes || []).forEach((p, i) => {
+    const valor = Math.round(Number(p.valor) * 100) / 100, nome = S_(p.socio); if (!(valor > 0) || !nome) return;
+    const rid = id + '-' + i, s = lista.find(x => x.nome === nome), vinc = S_(p.vinculo);
+    criar_({ id: rid, tipo: 'S', valor: valor, carteira: cart, data: data, categoria: 'Salários', descricao: 'Salário - ' + nome });
+    let st = 'ok', msg = '';
+    if (!s || !s.url || !s.chave) { st = 'erro'; msg = 'sócio sem link/chave'; }
+    else {
+      try {
+        const ops = vinc ? [{ op: 'edit', id: vinc, valor: valor, descricao: 'Salário empresa', categoria: 'Receita' }]
+                         : [{ op: 'add', id: 'emp-' + rid, tipo: 'E', valor: valor, descricao: 'Salário empresa', categoria: 'Receita', data: data }];
+        const j = chamar_(s, { acao: 'ops', ops: ops }), r0 = (j.res || [])[0];
+        if (!r0 || r0.erro) { st = 'erro'; msg = (r0 && r0.erro) || 'resposta inesperada'; }
+      } catch (e) { st = 'erro'; msg = String(e.message).slice(0, 80); }
+    }
+    upsertAba_('Repasses', HRP, 0, [rid, S_(b.origem), nome, valor, vinc, st, data, msg, Date.now()]);
+    out.push({ socio: nome, ok: st === 'ok', erro: msg });
+  });
+  return { ok: 1, res: out };
+}
+
 /* ---------- API PARA A HTML ---------- */
 // Previstos que vencem hoje, amanhã ou já passaram sem confirmar (usado pelos avisos do app)
 function agenda_() {
@@ -887,12 +960,15 @@ function agenda_() {
 
 function sync_(desde) {
   const agora = Date.now();
-  return { ver: VERSAO, agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_(), metas: metas_(), rotinas: rotinas_() };
+  return { ver: VERSAO, agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_(), metas: metas_(), rotinas: rotinas_(), socios: socios_(), repasses: repasses_() };
 }
 function api_(b) {
   if (b.acao === 'sync') return sync_(Number(b.desde || 0));
   if (b.acao === 'resumo') { const x = saldos_(); return { ok: 1, saldos: x.s, total: x.total, pS: x.pS, pE: x.pE, liquido: x.total - x.pS }; }
   if (b.acao === 'agenda') return agenda_();
+  if (b.acao === 'entradas') return { ok: 1, itens: entradas_(b.mes) };
+  if (b.acao === 'candidatos') return candidatos_(b);
+  if (b.acao === 'distribuir') return Object.assign(distribuir_(b), sync_(Number(b.desde || 0)));
   if (b.acao === 'texto') return texto_api_(b.texto, b.id);          // "Addit": mesma sintaxe do bot
   if (b.acao === 'comp') return comp_api_(b);                          // foto/print em base64 -> Drive + leitura
   if (b.acao === 'ops') {
@@ -908,6 +984,8 @@ function api_(b) {
         else if (o.op === 'carteira') upsert_('Carteiras', o.nome, [o.nome, Number(o.ini) || 0]);
         else if (o.op === 'meta') metaUpsert_(o);
         else if (o.op === 'rotina') rotinaUpsert_(o);
+        else if (o.op === 'socio') socioUpsert_(o);
+        else if (o.op === 'sociodel') socioUpsert_({ nome: o.nome, del: 1 });
         else if (o.op === 'rotinadel') rotinaUpsert_({ id: o.id, del: 1 });
         else if (o.op === 'metadel') metaUpsert_({ id: o.id, del: 1 });
         else if (o.op === 'orc') upsert_('Orcamentos', o.categoria, [o.categoria, Number(o.limite) || 0]);
