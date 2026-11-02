@@ -979,6 +979,7 @@ function fechar() { rmSheet(); if (sheetPush) { sheetPush = false; skipPop++; tr
 window.addEventListener('popstate', () => { if (skipPop > 0) { skipPop--; return; } if ($('#sheet')) { rmSheet(); sheetPush = false; } });
 const opts = (arr, sel) => arr.map(v => `<option ${v === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
 let form = {};
+const catsDe = tipo => tipo === 'E' ? (EMP ? ['Receita'] : ['Salário', 'Receita']) : (EMP ? ['Salário'].concat(CATS) : CATS);
 const repetirSel = cur => `<div class="f" id="grep"><label>Repetir</label><select id="frep"><option value="">Não repete</option><option value="dia" ${cur === 'dia' ? 'selected' : ''}>Todo dia</option><option value="semana" ${cur === 'semana' ? 'selected' : ''}>Toda semana</option><option value="mes" ${cur === 'mes' ? 'selected' : ''}>Todo mês</option></select><div class="hint" style="margin:6px 4px 0">Marcando, a previsão e as metas passam a contar com isso nos próximos dias. Só ajuda a prever: não lança nada sozinho.</div></div>`;
 const achaRot = (tipo, desc) => S.rotinas.find(x => x.tipo === tipo && norm(x.desc) === norm(desc));
 function opRepetir(tipo, desc, valor, data, freq, oldId) {      // gera a op da rotina conforme o select "Repetir"
@@ -996,7 +997,9 @@ function abrirNovo(prev, scan) {
   <div class="f"><label>Descrição</label><input id="fd" placeholder="mercado, salário, uber…" autocomplete="off"></div>
   <div class="two"><div class="f"><label id="lc">Conta</label><select id="fc">${opts(cs, cs[0])}</select></div>
    <div class="f" id="gd" style="display:none"><label>Para a conta</label><select id="fdst">${opts(cs, cs[1] || cs[0])}</select></div>
-   <div class="f" id="gcat"><label>Categoria</label><select id="fcat"><option value="">Automática</option>${opts(CATS)}</select></div></div>
+   <div class="f" id="gcat"><label>Categoria</label><select id="fcat"><option value="">Automática</option>${opts(catsDe('S'))}</select></div></div>
+  <div id="gsal" style="display:none"><div class="two"><div class="f"><label>Quem recebe?</label><select id="fsoc"><option value="">Escolha…</option>${opts(S.socios.map(x => x.nome))}</select></div>
+   <div class="f"><label>Já lancei este mês?</label><select id="fvin"><option value="">Criar nova</option></select></div></div><div class="hint" id="fsh" style="margin:-4px 6px 8px">Isso lança a saída aqui na empresa e a entrada de salário no app de quem recebe, sem duplicar.</div></div>
   <div class="two"><div class="f"><label>${prev ? 'Data prevista' : 'Data'}</label><input id="fdt" type="date" value="${isoHoje()}"></div>
    <div class="f" id="gn"><label>Parcelas (total)</label><input id="fn" inputmode="numeric" placeholder="1"></div></div>
   <div class="two" id="gpar" style="display:none"><div class="seg" id="svm" style="grid-column:span 2;margin-bottom:4px"><button class="on" data-v="total">O valor é o total</button><button data-v="parc">O valor é de cada parcela</button></div><div class="f"><label>Parcela atual (se já pagou outras)</label><input id="fpa" inputmode="numeric" placeholder="1"></div>
@@ -1015,7 +1018,17 @@ function abrirNovo(prev, scan) {
   ['#fv', '#fn', '#fpa'].forEach(q => $(q).addEventListener('input', pv));
   $('#fn').addEventListener('input', gp);
   if ($('#sqp')) $('#sqp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; form.pag = b.dataset.v; $('#sqp').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
-  $('#fcat').addEventListener('change', () => { form.catTocada = true; });
+  const salUi = () => { const on = EMP && form.tipo === 'S' && $('#fcat').value === 'Salário'; form.sal = on; $('#gsal').style.display = on ? '' : 'none';
+    ['#gn', '#grep', '#gcomp', '.quemsel', '#gpar'].forEach(q => { const e = $(q); if (e) e.style.display = on ? 'none' : (q === '#gn' ? (form.tipo === 'S' ? '' : 'none') : q === '#gpar' ? 'none' : ''); }); };
+  $('#fcat').addEventListener('change', () => { form.catTocada = true; salUi(); });
+  $('#fsoc').addEventListener('change', async () => { const nome = $('#fsoc').value, sel = $('#fvin'); sel.innerHTML = '<option value="">Criar nova</option>'; if (!nome) return;
+    const x = S.socios.find(z => z.nome === nome); if (!x || !x.ok) { $('#fsh').textContent = nome + ' ainda está sem link/chave (Ajustes, Sócios).'; return; }
+    try { const j = await api({acao: 'candidatos', socio: nome, mes: ($('#fdt').value || isoHoje()).slice(0, 7)}); if ($('#fsoc').value !== nome) return; const it = j.itens || [];
+      const mk = c => { const o = document.createElement('option'); o.value = c.id; o.textContent = dt(c.data).slice(0, 5) + ' • ' + c.desc + ' • ' + brl(c.valor); return o; };
+      const sal = it.filter(c => c.cat === 'Salário'), out = it.filter(c => c.cat !== 'Salário'); sal.forEach(c => sel.appendChild(mk(c)));
+      if (out.length) { const g = document.createElement('optgroup'); g.label = sal.length ? 'Outras entradas' : 'Sem categoria Salário: outras entradas'; out.forEach(c => g.appendChild(mk(c))); sel.appendChild(g); }
+      $('#fsh').textContent = sal.length ? 'Se já lançou o salário dele(a) neste mês, escolha acima para não duplicar.' : 'Nenhuma entrada com categoria Salário neste mês. Se já lançou, escolha acima (ou crie nova).';
+    } catch (e) { $('#fsh').textContent = 'Não consegui ver as entradas de ' + nome + ' (' + e.message + '). Vai criar uma entrada nova.'; } });
   $('#svm').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; form.vmode = b.dataset.v; $('#svm').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); pv(); });
   let tb; $('#fd').addEventListener('input', () => { clearTimeout(tb); form.img = ''; $('#fprod').innerHTML = ''; tb = setTimeout(async () => {
     if (form.tipo !== 'S') return; const q = $('#fd').value; const r = await buscarProduto(q); if (!r || $('#fd').value !== q || !$('#fprod')) return;
@@ -1023,7 +1036,7 @@ function abrirNovo(prev, scan) {
     $('#fprod').innerHTML = `<div class="prod"><div class="ico pic">${ic('search')}<img src="${esc(r.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></div><div class="t"><b>Foto encontrada</b>${r.cat ? 'Categoria: ' + esc(r.cat) : 'Toque no X se não for esse produto'}</div><button class="btn sm" data-a="tirarfotoform" aria-label="Remover foto">${ic('x')}</button></div>`; }, 750); });
   $('#sg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; form.tipo = b.dataset.v;
     $('#sg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-    $('#fcat').innerHTML = '<option value="">Automática</option>' + opts(form.tipo === 'E' ? ['Salário', 'Receita'] : CATS); form.catTocada = false;
+    $('#fcat').innerHTML = '<option value="">Automática</option>' + opts(catsDe(form.tipo)); form.catTocada = false; salUi();
     const T = form.tipo === 'T'; $('#gd').style.display = T ? '' : 'none'; $('#gcat').style.display = T ? 'none' : ''; $('#gn').style.display = form.tipo === 'S' ? '' : 'none'; gp();
     $('#lc').textContent = T ? 'Da conta' : 'Conta'; $('#gcomp').style.display = T ? 'none' : ''; gp(); });
   $('#ff').addEventListener('change', async e => {
@@ -1039,6 +1052,10 @@ function abrirNovo(prev, scan) {
 async function salvarNovo() {
   const v = num($('#fv').value); if (!(v > 0)) return aviso('Digite um valor maior que zero.', 'bad');
   const tipo = form.tipo, cart = $('#fc').value, desc = $('#fd').value.trim(), data = $('#fdt').value || isoHoje();
+  if (EMP && tipo === 'S' && $('#fcat').value === 'Salário') {       // salário de sócio: saída na empresa + entrada no app dele(a)
+    const nome = $('#fsoc').value; if (!nome) return aviso('Escolha quem recebe o salário.', 'bad');
+    const vin = $('#fvin').value || ''; fechar(); return enviarDist(uid(), '', data, cart, [{socio: nome, valor: v, vinculo: vin}]);
+  }
   const op = {op: 'add', id: uid(), tipo, valor: v, carteira: cart, data};
   if (tipo === 'T') { op.destino = $('#fdst').value; if (op.destino === cart) return aviso('Escolha contas diferentes.', 'bad'); op.categoria = 'Transferência'; op.descricao = 'Transf.'; }
   else { op.descricao = desc; op.categoria = $('#fcat').value || adivinha(desc, tipo); if (tipo === 'S') { op.n = parseInt($('#fn').value) || 1; const pa = parseInt($('#fpa').value) || 0;
