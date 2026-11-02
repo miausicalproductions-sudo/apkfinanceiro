@@ -149,6 +149,7 @@ a{color:var(--lima)}
 .pveil.go{clip-path:circle(160% at calc(100% - 34px) calc(var(--top) + 27px))}.pveil.out{opacity:0}
 .pvl{display:flex;flex-direction:column;align-items:center;gap:12px;color:white;font-size:26px;font-weight:700;letter-spacing:-.03em}.pva{width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.3);background-size:cover;background-position:center;border:3px solid rgba(255,255,255,.8)}
 @media (prefers-reduced-motion:reduce){.pbub.flip,.pbub.sync:after{animation:none}}
+.fileoc{position:relative;overflow:hidden}.fileoc input{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:100px;cursor:pointer}
 
 /* ===== tema pastel (versão iPhone) ===== */
 body{background:var(--bg)}
@@ -241,10 +242,13 @@ const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas
 // foto da bolinha de cada perfil (fica só neste aparelho)
 const fotoDe = p => { try { return localStorage.getItem(p === 'emp' ? 'e_fin_foto' : 'fin_foto') || ''; } catch (e) { return ''; } };
 function fotoQuadrada(file) {
-  return new Promise((res, rej) => { const img = new Image(), u = URL.createObjectURL(file);
-    img.onload = () => { const n = 160, k = Math.min(img.width, img.height), c = document.createElement('canvas'); c.width = c.height = n;
-      c.getContext('2d').drawImage(img, (img.width - k) / 2, (img.height - k) / 2, k, k, 0, 0, n, n); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg', .85)); };
-    img.onerror = () => rej(new Error('Não consegui abrir essa imagem.')); img.src = u; });
+  const corta = img => { const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, n = 160, k = Math.min(w, h), c = document.createElement('canvas'); c.width = c.height = n;
+    c.getContext('2d').drawImage(img, (w - k) / 2, (h - k) / 2, k, k, 0, 0, n, n); return c.toDataURL('image/jpeg', .85); };
+  return new Promise((res, rej) => { const fr = new FileReader();      // FileReader em vez de blob:, que alguns iPhones recusam
+    fr.onerror = () => rej(new Error('Não consegui ler essa foto.'));
+    fr.onload = () => { const img = new Image(); img.onload = () => { try { res(corta(img)); } catch (e) { rej(new Error('Não consegui processar essa foto.')); } };
+      img.onerror = () => rej(new Error('Não consegui abrir essa foto (tente outra, em JPG ou PNG).')); img.src = fr.result; };
+    fr.readAsDataURL(file); });
 }
 document.addEventListener('change', async e => { const t = e.target; if (t && t.dataset && t.dataset.meu !== undefined) { try { localStorage.setItem('fin_meunome', t.value); } catch (x) {} aviso(t.value ? 'Salvo: você é ' + t.value : 'Nome removido', 'good'); return; }
   if (!t || t.dataset.fp === undefined) return; const f = t.files && t.files[0]; if (!f) return;
@@ -452,6 +456,12 @@ const meuNome = () => { try { return localStorage.getItem('fin_meunome') || ''; 
 const cfgEmpresa = () => { try { const c = JSON.parse(localStorage.getItem('e_fin_cfg') || '{}'); return /^https:\/\//.test(c.url || '') && c.chave ? c : null; } catch (e) { return null; } };
 const empFila = () => { try { return JSON.parse(localStorage.getItem('fin_empfila') || '[]'); } catch (e) { return []; } };
 const empFilaSet = a => { try { localStorage.setItem('fin_empfila', JSON.stringify(a)); } catch (e) {} };
+let sociosTentou = false;
+async function carregarSociosEmpresa() {       // conta pessoal: pega a lista de sócios direto da planilha da empresa
+  if (EMP || sociosTentou) return; const c = cfgEmpresa(); if (!c) return; sociosTentou = true;
+  try { const r = await fetch(c.url, {method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({chave: c.chave, acao: 'sync', desde: Date.now() + 1e10}), redirect: 'follow'}); const j = JSON.parse(await r.text());
+    if (j.socios) { try { localStorage.setItem('fin_socios_cache', JSON.stringify(j.socios.map(x => x.nome))); } catch (e) {} if (S.tab === 'mais' && !EMP) render(); } } catch (e) { sociosTentou = false; }
+}
 let drenando = false;
 async function drenarEmpresa() {
   if (drenando || EMP) return; const c = cfgEmpresa(); if (!c) return; drenando = true;
@@ -879,11 +889,12 @@ function telaMes() {
 function cartaoEmpresa() {
   if (!EMPON) return `<div class="sec" style="margin-top:0"><h2>Empresa</h2></div><div class="card"><div class="hint" style="margin:0 0 12px">Tem uma empresa com sócios? Ative a conta da empresa neste aparelho para ver o caixa compartilhado e distribuir as entradas.</div><button class="btn full" data-a="empon">Ativar conta da empresa</button></div>`;
   const rp = S.repasses.slice().reverse().slice(0, 12);
-  let nomes = []; try { nomes = (JSON.parse(localStorage.getItem('e_fin_state') || '{}').socios || []).map(x => x.nome); } catch (e) {}
-  const quem = !EMP ? `<div class="sec"><h2>Quem sou eu na empresa</h2></div><div class="card"><div class="f" style="margin:0"><select data-meu="1"><option value="">Escolha…</option>${opts(nomes, meuNome())}</select></div><div class="hint" style="margin:10px 0 0">${nomes.length ? 'Quando você marcar um salário (categoria Salário) como recebido, a empresa dá a saída correspondente como paga.' : 'Abra a conta da empresa uma vez (bolinha) para carregar a lista de sócios.'}</div></div>` : '';
+  let nomes = []; try { nomes = Array.from(new Set((JSON.parse(localStorage.getItem('fin_socios_cache') || '[]')).concat((JSON.parse(localStorage.getItem('e_fin_state') || '{}').socios || []).map(x => x.nome)))); } catch (e) {}
+  if (!EMP && !nomes.length) carregarSociosEmpresa();
+  const quem = !EMP ? `<div class="sec"><h2>Quem sou eu na empresa</h2></div><div class="card"><div class="f" style="margin:0">${nomes.length ? `<select data-meu="1"><option value="">Escolha…</option>${opts(nomes, meuNome())}</select>` : `<input data-meu="1" value="${esc(meuNome())}" placeholder="Seu nome, igual ao de Sócios na empresa" autocomplete="off">`}</div><div class="hint" style="margin:10px 0 0">${nomes.length ? 'Quando você marcar um salário (categoria Salário) como recebido, a empresa dá a saída correspondente como paga.' : 'Não achei a lista de sócios. Cadastre os sócios na conta da empresa (Ajustes, Sócios) e volte aqui, ou digite seu nome exatamente como cadastrado lá.'}</div></div>` : '';
   return quem + `<div class="sec" style="margin-top:0"><h2>Conta</h2></div><div class="card"><div class="seg" id="sper"><button class="${EMP ? '' : 'on'}" data-a="perfil" data-p="">Pessoal</button><button class="${EMP ? 'on' : ''}" data-a="perfil" data-p="emp">Empresa</button></div>
    <div class="hint" style="margin:10px 0 0">${EMP ? 'Você está vendo o caixa da empresa (outra planilha). Cada conta tem o seu link e a sua chave.' : 'Troque para Empresa para ver o caixa da empresa.'}</div></div>`
-  + `<div class="sec"><h2>Foto da bolinha</h2></div><div class="card" style="padding:6px 18px">${[['', 'Pessoal', 'var(--lima)'], ['emp', 'Empresa', 'var(--azul)']].map(([k, n, c]) => `<div class="row" style="cursor:default"><span class="pbub" style="position:static;flex:none;background:${c};${avatarCss(k)}">${n[0]}</span><div class="t"><b>${n}</b><span>${fotoDe(k) ? 'foto escolhida' : 'sem foto (mostra a letra)'}</span></div>${fotoDe(k) ? `<button class="btn sm" data-a="tirarfoto" data-p="${k}">Tirar</button>` : ''}<label class="btn sm" style="margin:0">Escolher<input type="file" accept="image/*" data-fp="${k}" style="display:none"></label></div>`).join('')}</div>`
+  + `<div class="sec"><h2>Foto da bolinha</h2></div><div class="card" style="padding:6px 18px">${[['', 'Pessoal', 'var(--lima)'], ['emp', 'Empresa', 'var(--azul)']].map(([k, n, c]) => `<div class="row" style="cursor:default"><span class="pbub" style="position:static;flex:none;background:${c};${avatarCss(k)}">${n[0]}</span><div class="t"><b>${n}</b><span>${fotoDe(k) ? 'foto escolhida' : 'sem foto (mostra a letra)'}</span></div>${fotoDe(k) ? `<button class="btn sm" data-a="tirarfoto" data-p="${k}">Tirar</button>` : ''}<label class="btn sm fileoc" style="margin:0">Escolher<input type="file" accept="image/*" data-fp="${k}"></label></div>`).join('')}</div>`
   + (EMP ? `<div class="sec"><h2>Sócios</h2><button class="btn sm" data-a="novosocio">${ic('plus')} Sócio</button></div>
    <div class="card" style="padding:6px 18px">${S.socios.length ? S.socios.map(x => `<div class="row" data-a="editsocio" data-n="${esc(x.nome)}"><div class="ico">${ic('bank')}</div><div class="t"><b>${esc(x.nome)}</b><span>${x.ok ? 'conectado ao app dele(a)' : 'falta o link e a chave'}</span></div></div>`).join('') : '<div class="empty">Cadastre cada sócio com o link e a chave do app pessoal dele(a). É assim que o salário chega sozinho na conta de cada um.</div>'}</div>
    <div class="sec"><h2>Repasses</h2></div>
