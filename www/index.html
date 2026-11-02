@@ -452,9 +452,9 @@ function saldos() {
   return {s, total, pS, pE, liq: total - pS};
 }
 function mesResumo(ym) {
-  const cat = {}, dia = {}; let e = 0, sd = 0, aj = 0;
+  const cat = {}, dia = {}, h = isoHoje(); let e = 0, sd = 0, aj = 0;
   vivas().forEach(r => {
-    if (r.prev || r.data.slice(0, 7) !== ym) return;
+    if (r.prev || r.data > h || r.data.slice(0, 7) !== ym) return;      // o que ainda vai vencer não conta como gasto
     if (r.cat === 'Ajuste') { aj += r.tipo === 'E' ? r.valor : -r.valor; return; }
     if (r.tipo === 'E') e += r.valor; else if (r.tipo === 'S') { sd += r.valor; cat[r.cat] = (cat[r.cat] || 0) + r.valor; dia[Number(r.data.slice(8))] = (dia[Number(r.data.slice(8))] || 0) + r.valor; }
   });
@@ -892,7 +892,8 @@ function abrirDet(id) {
   ${r.tipo === 'S' ? `<div class="prod" id="dfoto">${detFoto(r.img)}</div>` : ''}
   <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${r.comp ? `<a class="btn" href="${esc(r.comp)}" target="_blank" rel="noopener">${ic('clip')} Ver comprovante</a>` : ''}
    <label class="btn" style="margin:0">${ic('scan')} ${r.comp ? 'Trocar' : 'Anexar'} comprovante<input id="ea" type="file" accept="image/*,application/pdf" style="display:none"></label></div>
-  <div style="display:flex;gap:10px"><button class="btn no" data-a="apagar" data-id="${esc(id)}" aria-label="Apagar">${ic('trash')}</button><button class="btn pri" style="flex:1" data-a="salvaredit" data-id="${esc(id)}">Salvar</button></div>`);
+  ${r.grupo ? `<button class="btn no full" style="margin-bottom:10px" data-a="apagargrupo" data-id="${esc(r.grupo)}">${ic('trash')} Apagar o parcelamento inteiro (${Object.values(S.linhas).filter(x => x.grupo === r.grupo && !x.del).length} parcelas)</button>` : ''}
+  <div style="display:flex;gap:10px"><button class="btn no" data-a="apagar" data-id="${esc(id)}" aria-label="Apagar só esta">${ic('trash')}${r.grupo ? ' só esta' : ''}</button><button class="btn pri" style="flex:1" data-a="salvaredit" data-id="${esc(id)}">Salvar</button></div>`);
   $('#ea').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; aviso('Enviando comprovante…');
     try { const x = await enviarArquivo(f); fechar(); await fazer([{op: 'anexar', id, url: x.url}], 'Comprovante anexado'); } catch (er) { aviso(er.message, 'bad'); } });
 }
@@ -952,6 +953,7 @@ async function acao(a, el) {
       if (r0.grupo) Object.values(S.linhas).filter(x => x.grupo === r0.grupo && x.id !== r0.id && !x.del).forEach(x => ops.push({op: 'edit', id: x.id, imagem: detImg})); op.imagem = detImg; }
     fechar(); await fazer(ops, 'Atualizado');
   }
+  else if (a === 'apagargrupo') { fechar(); await fazer([{op: 'del', id: d.id}], 'Parcelamento apagado'); }
   else if (a === 'apagar') { fechar(); await fazer([{op: 'del', id: d.id}], 'Apagado'); }
   else if (a === 'okorc') {
     const ops = []; document.querySelectorAll('[data-oc]').forEach(i => { const v = num(i.value || '0') || 0; ops.push({op: 'orc', categoria: i.dataset.oc, limite: v}); });
