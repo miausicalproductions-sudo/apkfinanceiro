@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Financeiro">
+<link rel="apple-touch-icon" href="icon-180.png"><link rel="manifest" href="manifest.webmanifest">
 <title>Financeiro</title>
 <style>
 @font-face{font-family:'Inter Tight';src:url('fonts/InterTight.woff2') format('woff2');font-weight:100 900;font-display:swap}
@@ -65,7 +68,7 @@ background:radial-gradient(120% 90% at 85% 0%,#ff7a2f 0%,rgba(255,122,47,0) 55%)
 .quick input{border:0;background:none;padding:11px 0;border-radius:0;flex:1;min-width:0}
 .quick .go{width:42px;height:42px;border-radius:50%;border:0;background:var(--lima);color:#000;font-size:19px;display:grid;place-items:center}
 .quick .scan{background:none;border:0;color:var(--lima);font-size:23px;width:40px;height:40px;display:grid;place-items:center}
-input,select{width:100%;background:var(--card2);color:var(--tx);border:1px solid var(--line2);border-radius:18px;padding:14px 16px;font:inherit;outline:none}
+input,select{width:100%;background:var(--card2);color:var(--tx);border:1px solid var(--line2);border-radius:18px;padding:14px 16px;font:inherit;font-size:16px;outline:none}
 input:focus,select:focus{border-color:var(--lima)}
 input::placeholder{color:var(--dim)}
 select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#777 50%),linear-gradient(135deg,#777 50%,transparent 50%);background-position:calc(100% - 20px) 55%,calc(100% - 14px) 55%;background-size:6px 6px;background-repeat:no-repeat;padding-right:34px}
@@ -1012,6 +1015,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) envi
 setInterval(() => { if (!document.hidden) enviar(); }, 60000);
 
 /* ============ início ============ */
+// versão para Safari/iPhone: guarda o app para abrir sem internet (no app Android isso não é usado)
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && location.hostname !== 'localhost' && !nativo()) navigator.serviceWorker.register('sw.js').catch(() => {});
 carregarLocal(); render();
 if (!S.cfg.url) { S.tab = 'mais'; render(); aviso('Primeiro configure o link e a chave.', ''); }
 else { reaplicar(); render(); enviar(); }

@@ -19,3 +19,7 @@ App em HTML (Capacitor) ligado ao seu bot/planilha, com **widget** e o **Addit**
 - `www/index.html` — todo o layout e a lógica do app.
 - `android/.../QuickAddActivity.java` — Addit. `FinWidget.java` — widget. `Api.java` — conversa com o Apps Script (+ fila offline).
 - `.github/workflows/apk.yml` — compila e publica o APK.
+
+## Versão para iPhone (Safari)
+A pasta `docs/` é o mesmo app em HTML, pronto para o GitHub Pages (Settings > Pages > branch main, pasta /docs).
+No iPhone: abrir o endereço no Safari > Compartilhar > "Adicionar à Tela de Início". Ao mudar `www/index.html`, copie para `docs/index.html`.
