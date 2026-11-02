@@ -1,0 +1,7 @@
+{
+  "appId": "app.financeiro.matheus",
+  "appName": "Financeiro",
+  "webDir": "www",
+  "backgroundColor": "#0f1720",
+  "plugins": { "CapacitorHttp": { "enabled": true } }
+}

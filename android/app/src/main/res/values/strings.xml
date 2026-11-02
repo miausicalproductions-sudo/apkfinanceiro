@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Financeiro</string>
+    <string name="title_activity_main">Financeiro</string>
+    <string name="package_name">app.financeiro.matheus</string>
+    <string name="custom_url_scheme">app.financeiro.matheus</string>
+    <string name="widget_desc">Saldo e lançamento rápido</string>
+    <string name="sc_lancar">Lançar</string>
+    <string name="sc_lancar_long">Lançar gasto ou entrada</string>
+</resources>

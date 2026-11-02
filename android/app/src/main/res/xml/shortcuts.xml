@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="addit"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/sc_lancar"
+        android:shortcutLongLabel="@string/sc_lancar_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.financeiro.matheus"
+            android:targetClass="app.financeiro.matheus.QuickAddActivity" />
+    </shortcut>
+</shortcuts>
