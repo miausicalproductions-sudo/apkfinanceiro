@@ -886,6 +886,20 @@ function telaMes() {
   <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 14px"><button class="btn sm" data-a="mm" data-d="-1" aria-label="Mês anterior">${ic('left')}</button><b style="font-size:17px;text-transform:capitalize">${MESES[m - 1]} ${y}</b><button class="btn sm" data-a="mm" data-d="1" aria-label="Próximo mês">${ic('right')}</button></div>
   <div class="pills">${[['rd', 'Rece. vs Desp.'], ['gt', 'Gastos'], ['dy', 'Dias']].map(([k, n]) => `<button class="pill ${S.mview === k ? 'on' : ''}" data-a="mv" data-v="${k}">${n}</button>`).join('')}</div>${corpo}`;
 }
+// guarda/restaura a configuração (links, chaves e nome) para não perder ao reinstalar o app
+const cfgDe = k => { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } };
+function codigoCfg() { const o = {p: cfgDe('fin_cfg'), e: cfgDe('e_fin_cfg'), n: meuNome(), m: EMPON ? 1 : 0}; return 'FIN1.' + btoa(unescape(encodeURIComponent(JSON.stringify(o)))); }
+function restaurarCfg(txt) {
+  const m = String(txt || '').trim().match(/FIN1\.([A-Za-z0-9+\/=]+)/); if (!m) throw new Error('Esse código não é válido.');
+  let o; try { o = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { throw new Error('Esse código está incompleto ou foi alterado.'); }
+  if (o.p && o.p.url && o.e && o.e.url && o.p.url === o.e.url) throw new Error('O código tem o mesmo link nas duas contas. Corrija e gere de novo.');
+  try { localStorage.setItem('fin_cfg', JSON.stringify(o.p || {})); localStorage.setItem('e_fin_cfg', JSON.stringify(o.e || {})); if (o.n) localStorage.setItem('fin_meunome', o.n); if (o.m || (o.e && o.e.url)) localStorage.setItem('fin_emp', '1'); } catch (e) { throw new Error('Não consegui salvar neste aparelho.'); }
+  try { const P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Preferences; if (P && o.p) { P.set({key: 'url', value: o.p.url || ''}); P.set({key: 'chave', value: o.p.chave || ''}); } } catch (e) {}
+}
+function cartaoBackup() {
+  return `<div class="sec"><h2>Guardar configuração</h2></div><div class="card"><div class="hint" style="margin:0 0 12px">Copie o código e guarde nas suas notas. Se reinstalar o app, é só colar aqui e tudo volta (links, chaves e contas). Os lançamentos não se perdem: vêm da planilha. Quem tiver esse código acessa suas planilhas, então não compartilhe.</div>
+   <div style="display:flex;gap:8px"><button class="btn pri" style="flex:1" data-a="cfgcopiar">Copiar código</button><button class="btn" style="flex:1" data-a="cfgcolar">Restaurar</button></div></div>`;
+}
 function cartaoEmpresa() {
   if (!EMPON) return `<div class="sec" style="margin-top:0"><h2>Empresa</h2></div><div class="card"><div class="hint" style="margin:0 0 12px">Tem uma empresa com sócios? Ative a conta da empresa neste aparelho para ver o caixa compartilhado e distribuir as entradas.</div><button class="btn full" data-a="empon">Ativar conta da empresa</button></div>`;
   const rp = S.repasses.slice().reverse().slice(0, 12);
@@ -902,7 +916,7 @@ function cartaoEmpresa() {
 }
 function telaMais() {
   const P = parcelas(), c = S.cfg;
-  return `<h1 class="title">Ajustes<br><span>e conexão.</span></h1>${cartaoEmpresa()}
+  return `<h1 class="title">Ajustes<br><span>e conexão.</span></h1>${cartaoEmpresa()}${cartaoBackup()}
   <div class="sec" style="margin-top:0"><h2>Parcelamentos</h2></div>
   <div class="card">${P.length ? P.map(x => `<div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between"><b style="font-size:16px">${esc(x.d)}</b><span>${x.n}x de ${brl(x.val)}</span></div>
    <div class="prog"><i style="width:${Math.round(x.pag / x.n * 100)}%"></i></div>
@@ -1233,6 +1247,12 @@ async function acao(a, el) {
   else if (a === 'ajuste') abrirAjuste(d.c);
   else if (a === 'receber') abrirReceber(d.id);
   else if (a === 'orc') abrirOrc();
+  else if (a === 'cfgcopiar') { const c = codigoCfg(); let ok = false; try { await navigator.clipboard.writeText(c); ok = true; } catch (e) {}
+    folha(`<h3>Código de configuração</h3><div class="hint" style="margin-top:-8px">${ok ? 'Já copiei. ' : 'Toque no campo, selecione tudo e copie. '}Cole nas suas notas. Não compartilhe com ninguém.</div><div class="f"><textarea id="cod" rows="6" readonly style="width:100%;font-size:12px;word-break:break-all">${esc(c)}</textarea></div><button class="btn full" data-a="fechar">Fechar</button>`);
+    setTimeout(() => { const t = $('#cod'); if (t) { t.focus(); t.select(); } }, 80); }
+  else if (a === 'cfgcolar') folha(`<h3>Restaurar configuração</h3><div class="hint" style="margin-top:-8px">Cole aqui o código que você guardou (começa com FIN1.).</div><div class="f"><textarea id="cod" rows="6" placeholder="FIN1...." style="width:100%;font-size:12px"></textarea></div>
+    <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Cancelar</button><button class="btn pri" style="flex:1" data-a="cfgok">Restaurar</button></div>`);
+  else if (a === 'cfgok') { try { restaurarCfg($('#cod').value); aviso('Configuração restaurada', 'good'); setTimeout(() => location.reload(), 600); } catch (e) { aviso(e.message, 'bad'); } }
   else if (a === 'perfil') await trocarPerfil(d.p || '');
   else if (a === 'tirarfoto') { try { localStorage.removeItem(d.p === 'emp' ? 'e_fin_foto' : 'fin_foto'); } catch (e) {} render(); }
   else if (a === 'empon') { EMPON = true; try { localStorage.setItem('fin_emp', '1'); } catch (e) {} await trocarPerfil('emp', true); }
@@ -1344,7 +1364,9 @@ async function acao(a, el) {
   else if (a === 'avisotestar') { const A = AV(); if (!nativo() || !A) return aviso('Os avisos funcionam no app instalado.', 'bad'); gravarAgenda(); try { const r = await A.testar(); aviso(r.ativo ? 'Aviso de teste enviado (' + r.itens + ' vencimento(s) próximos)' : 'Notificações estão bloqueadas para o app.', r.ativo ? 'good' : 'bad'); } catch (e) { aviso('Falha no teste: ' + e.message, 'bad'); } }
   else if (a === 'resync') { try { await sync(true); reaplicar(); aviso('Tudo recarregado', 'good'); } catch (e) { aviso(e.message, 'bad'); } render(); }
   else if (a === 'salvarcfg') {
-    S.cfg.url = $('#cu').value.trim(); S.cfg.chave = $('#cc').value.trim(); await salvarCfg();
+    const nu = $('#cu').value.trim(), nc = $('#cc').value.trim();
+    try { const o = JSON.parse(localStorage.getItem(EMP ? 'fin_cfg' : 'e_fin_cfg') || '{}'); if (nu && o.url && o.url === nu) return aviso('Esse link é o mesmo da conta ' + (EMP ? 'pessoal' : 'da empresa') + '. Cada conta precisa do seu próprio link.', 'bad'); } catch (e) {}
+    S.cfg.url = nu; S.cfg.chave = nc; await salvarCfg();
     try { const r = await api({acao: 'resumo'}); aviso('Conectado. Total ' + brl(r.total), 'good'); await sync(true); } catch (e) { aviso(e.message, 'bad'); }
     render();
   }
