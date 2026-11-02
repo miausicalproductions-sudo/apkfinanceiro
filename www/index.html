@@ -207,7 +207,7 @@ const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
 const num = t => { let s = String(t).trim().replace(/^R\$\s*/i, ''); const neg = s[0] === '-'; s = s.replace(/^[-+]/, '');
   s = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(',', '.');
   const v = parseFloat(s); return isNaN(v) ? null : (neg ? -v : v); };
-const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pf: '', todos: false, rede: null };
+const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, pf: '', todos: false, rede: null };
 
 function salvarLocal() { try { localStorage.setItem('fin_state', JSON.stringify({linhas: S.linhas, carteiras: S.carteiras, orc: S.orc, metas: S.metas, desde: S.desde, fila: S.fila})); } catch (e) {} clearTimeout(tAg); tAg = setTimeout(() => { try { gravarAgenda(); } catch (e) {} }, 800); }
 function carregarLocal() {
@@ -612,10 +612,11 @@ const barras = (cat, tot) => { const k = Object.keys(cat).sort((a, b) => cat[b] 
 
 /* ============ telas ============ */
 /* ---- saldo previsto: onde o saldo vai chegar quando tudo que está agendado acontecer ---- */
+const fimMes = off => { const [y, m] = isoHoje().slice(0, 7).split('-').map(Number), d = new Date(y, m + off, 0); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
 function projecao() {
-  const x = saldos(), h = isoHoje(); let v = x.total; const pts = [{d: h, v, t: 0}];
-  pendentes().forEach(r => { v += r.tipo === 'E' ? r.valor : -r.valor; pts.push({d: r.data < h ? h : r.data, v, t: r.tipo === 'E' ? 1 : -1}); });
-  return {x, pts, fim: v};
+  const x = saldos(), h = isoHoje(), lim = S.pv === 'tudo' ? null : fimMes(S.pvm || 0); let v = x.total, pe = 0, ps = 0; const pts = [{d: h, v, t: 0}];
+  pendentes().filter(r => !lim || r.data <= lim).forEach(r => { v += r.tipo === 'E' ? r.valor : -r.valor; if (r.tipo === 'E') pe += r.valor; else ps += r.valor; pts.push({d: r.data < h ? h : r.data, v, t: r.tipo === 'E' ? 1 : -1}); });
+  return {x, pts, fim: v, pe, ps, lim};
 }
 function svgPrevisto(p) {
   const W = 320, H = 130, px = 10, py = 18, d0 = new Date(p.pts[0].d).getTime(), last = p.pts[p.pts.length - 1];
@@ -641,12 +642,14 @@ function cartaoAvisos() {
    <button class="btn sm ${r.tipo === 'E' ? 'pri' : 'bco'}" data-a="receber" data-id="${esc(r.id)}">${r.tipo === 'E' ? 'Recebi' : 'Paguei'}</button></div>`).join('')}</div>`;
 }
 function cartaoPrevisto() {
-  const p = projecao(), x = p.x, tem = p.pts.length > 1, fimD = p.pts[p.pts.length - 1].d;
-  return `<div class="card tap" data-a="pf" data-f=""><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="lbl">Saldo previsto</div><div class="big" style="font-size:30px;margin-top:4px;color:${p.fim < 0 ? 'var(--verm)' : '#fff'}">${brl(p.fim)}</div></div><span class="mut" style="font-size:18px;margin-top:2px">${ic('right')}</span></div>
-   ${tem ? `${svgPrevisto(p)}<div class="axis"><span>hoje</span><span>${dt(fimD).slice(0, 5)}</span></div>` : `<div class="hint" style="margin:10px 2px 4px">Nada previsto ainda. Toque no + e marque “Ainda vai acontecer” para anotar um salário ou uma conta futura.</div>`}
+  const p = projecao(), x = p.x, tem = p.pts.length > 1, fimD = p.pts[p.pts.length - 1].d, mes = S.pv !== 'tudo', nm = nomeMes(p.lim || isoHoje());
+  return `<div class="card"><div class="pills" style="margin-bottom:12px"><button class="pill ${mes ? 'on' : ''}" data-a="pvmodo" data-v="mes">Por mês</button><button class="pill ${mes ? '' : 'on'}" data-a="pvmodo" data-v="tudo">Tudo agendado</button></div>
+   ${mes ? `<div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 10px"><button class="btn sm" data-a="pvm" data-d="-1" ${(S.pvm || 0) <= 0 ? 'disabled style="opacity:.3"' : ''} aria-label="Mês anterior">${ic('left')}</button><span style="font-size:14px">até o fim de <b style="text-transform:capitalize">${nm}</b></span><button class="btn sm" data-a="pvm" data-d="1" aria-label="Próximo mês">${ic('right')}</button></div>` : ''}
+   <div class="tap" data-a="pf" data-f=""><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="lbl">Saldo previsto${mes ? ' • ' + nm : ''}</div><div class="big" style="font-size:30px;margin-top:4px;color:${p.fim < 0 ? 'var(--verm)' : '#fff'}">${brl(p.fim)}</div></div><span class="mut" style="font-size:18px;margin-top:2px">${ic('right')}</span></div>
+   ${tem ? `${svgPrevisto(p)}<div class="axis"><span>hoje</span><span>${dt(fimD).slice(0, 5)}</span></div>` : `<div class="hint" style="margin:10px 2px 4px">${mes ? 'Nada previsto até o fim de ' + nm + '.' : 'Nada previsto ainda.'} Toque no + e marque “Ainda vai acontecer” para anotar um salário ou uma conta futura.</div>`}</div>
    <div class="leg"><span><i style="background:#fff"></i>Saldo agora</span><b>${brl(x.total)}</b></div>
-   <div class="leg"><span><i style="background:var(--lima)"></i>A receber</span><b class="lima">+${brl(x.pE)}</b></div>
-   <div class="leg"><span><i style="background:var(--verm)"></i>A pagar</span><b>−${brl(x.pS)}</b></div></div>`;
+   <div class="leg"><span><i style="background:var(--lima)"></i>A receber</span><b class="lima">+${brl(p.pe)}</b></div>
+   <div class="leg"><span><i style="background:var(--verm)"></i>A pagar</span><b>−${brl(p.ps)}</b></div></div>`;
 }
 function telaHome() {
   const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7)), pv = projecao();
@@ -655,7 +658,7 @@ function telaHome() {
   const lista = rec.slice(0, S.todos ? 60 : 8), ncat = Object.keys(mr.cat).length;
   return `<div class="hero"><div class="row1"><div class="logo">${ic('coin')}</div>
     <div class="pilha">${nomes.slice(0, 3).map(k => banco(k)).join('')}<span class="dot ${S.rede === false || S.fila.length ? 'off' : ''}"></span></div></div>
-    <div><div class="lbl">Saldo total agora</div><div class="big">${brl(x.total)}</div>${pv.pts.length > 1 ? `<div class="lbl" data-a="pf" data-f="" style="margin-top:6px">Previsto ${brl(pv.fim)} após o que está agendado ${ic('right')}</div>` : ''}</div></div>
+    <div><div class="lbl">Saldo total agora</div><div class="big">${brl(x.total)}</div>${pv.pts.length > 1 ? `<div class="lbl" data-a="pf" data-f="" style="margin-top:6px">Previsto ${brl(pv.fim)} ${S.pv === 'tudo' ? 'após tudo que está agendado' : 'até o fim de ' + nomeMes(pv.lim)} ${ic('right')}</div>` : ''}</div></div>
   <div class="dois">
    <div class="mini" data-a="tab" data-t="mais"><div class="cab"><div style="display:flex">${nomes.slice(0, 3).map(k => banco(k)).join('')}</div><span class="ch">${ic('right')}</span></div>
      <div><div class="s">Saldo em contas</div><div class="v">${brl(x.total)}</div><div class="s">${nomes.length} ${nomes.length === 1 ? 'conta' : 'contas'}</div></div></div>
@@ -949,6 +952,8 @@ async function acao(a, el) {
     fechar(); await fazer(ops, 'Orçamentos salvos');
   }
   else if (a === 'adiantar') { const x = parcelas().find(p => p.k === d.k); if (x) await fazer([{op: 'adiantar', descricao: x.d, qtd: 1}], 'Parcela adiantada'); }
+  else if (a === 'pvmodo') { S.pv = d.v; render(); }
+  else if (a === 'pvm') { S.pvm = Math.max(0, (S.pvm || 0) + Number(d.d)); render(); }
   else if (a === 'qenviar') await enviarQuick();
   else if (a === 'novameta') abrirNovaMeta();
   else if (a === 'editmeta') abrirNovaMeta(d.id);
