@@ -140,8 +140,9 @@ a{color:var(--lima)}
 .qtag{font-style:normal;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;margin-right:6px;color:var(--tx)}.qtag.eu{background:var(--lima)}.qtag.pai{background:var(--azul)}
 .chipsw{border:0;border-radius:999px;padding:7px 12px;font:inherit;font-weight:600;font-size:12.5px;background:rgba(255,255,255,.14);color:var(--tx);backdrop-filter:blur(8px)}.chipsw.emp{background:var(--azul);color:var(--tx)}
 .dist .f label{font-size:13px}.dist select,.dist input{font-size:15px}.stt{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}.stt.ok{background:var(--lima);color:var(--on)}.stt.er{background:var(--verm);color:var(--tx)}
-.pbub{position:absolute;right:9px;bottom:76px;width:44px;height:44px;border-radius:50%;border:2px solid var(--bg);background:var(--lima);color:var(--on);font:700 17px/1 inherit;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.28);touch-action:manipulation;user-select:none;-webkit-user-select:none}.pbub.emp{background:var(--azul);color:var(--tx)}
-.pmenu{position:fixed;right:14px;bottom:calc(var(--bot) + 134px);z-index:30;background:var(--card2);border:1px solid var(--line2);border-radius:22px;padding:6px;box-shadow:0 14px 40px rgba(255,255,255,.55);min-width:170px}.pmenu button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--tx);font:inherit;font-weight:600;padding:12px 14px;border-radius:16px}.pmenu button.on{background:var(--card)}.pmenu i{width:28px;height:28px;border-radius:50%;display:block;flex:none}
+.pbub{position:fixed;right:14px;top:calc(var(--top) + 7px);z-index:12;width:40px;height:40px;border-radius:50%;border:2px solid var(--bg);background:var(--lima);color:var(--on);font:700 17px/1 inherit;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.28);touch-action:manipulation;user-select:none;-webkit-user-select:none}.pbub.emp{background:var(--azul);color:var(--tx)}
+.pmenu{position:fixed;right:14px;top:calc(var(--top) + 54px);z-index:30;background:var(--card2);border:1px solid var(--line2);border-radius:22px;padding:6px;box-shadow:0 14px 40px rgba(255,255,255,.55);min-width:170px}.pmenu button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--tx);font:inherit;font-weight:600;padding:12px 14px;border-radius:16px}.pmenu button.on{background:var(--card)}.pmenu i{width:28px;height:28px;border-radius:50%;display:block;flex:none}
+.tem-bub .hero .pilha{margin-right:50px}
 
 /* ===== tema pastel (versão iPhone) ===== */
 body{background:var(--bg)}
@@ -870,6 +871,7 @@ function render() {
   main.innerHTML = t === 'home' ? telaHome() : t === 'prev' ? telaPrev() : t === 'dicas' ? telaDicas() : t === 'mes' ? telaMes() : telaMais();
   if ($('#qt')) $('#qt').value = qv;
   main.scrollTop = keep;
+  document.body.classList.toggle('tem-bub', EMPON);
   $('#dock').innerHTML = `<nav>${[['home', 'home', 'Início'], ['prev', 'cal', 'Previstos'], ['dicas', 'bulb', 'Metas e dicas'], ['mes', 'chart', 'Mês'], ['mais', 'sliders', 'Ajustes']]
     .map(([k, i, n]) => `<button class="${t === k ? 'on' : ''}" data-a="tab" data-t="${k}" aria-label="${n}">${ic(i)}</button>`).join('')}</nav>
     <button class="fab" data-a="novo" data-p="${t === 'prev' ? '1' : ''}" aria-label="Novo lançamento">${ic('plus')}</button>
