@@ -805,7 +805,7 @@ function api_(b) {
         if (o.op === 'add') criar_(o);
         else if (o.op === 'del') mudar_(casa_(o.id), x => x[12] = 1);
         else if (o.op === 'cat') mudar_(casa_(o.id), x => x[4] = o.categoria);
-        else if (o.op === 'edit') mudar_(x => x[0] === S_(o.id), x => { x[1] = o.data || x[1]; x[3] = o.valor || x[3]; x[4] = o.categoria || x[4]; x[5] = o.descricao != null ? o.descricao : x[5]; x[6] = o.carteira || x[6]; });
+        else if (o.op === 'edit') mudar_(x => x[0] === S_(o.id), x => { x[1] = o.data || x[1]; x[3] = o.valor || x[3]; x[4] = o.categoria || x[4]; x[5] = o.descricao != null ? o.descricao : x[5]; x[6] = o.carteira || x[6]; if (o.previsto != null) x[14] = o.previsto ? 1 : 0; });
         else if (o.op === 'anexar') mudar_(so_(o.id), x => x[13] = S_(o.url));
         else if (o.op === 'receber')mudar_(x => x[0] === S_(o.id) && prev_(x), x => { x[14] = 0; x[1] = o.data || hoje_(); if (o.valor) x[3] = o.valor; });
         else if (o.op === 'adiantar') adiantar_(o.descricao, o.qtd);

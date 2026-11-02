@@ -48,6 +48,8 @@ background:radial-gradient(120% 90% at 85% 0%,#ff7a2f 0%,rgba(255,122,47,0) 55%)
 .mini{background:var(--card);border:1px solid var(--line);border-radius:26px;padding:16px;min-height:150px;display:flex;flex-direction:column;justify-content:space-between}
 .mini .v{font-size:20px;font-weight:600;letter-spacing:-.03em;margin-top:2px}
 .mini .s{font-size:12px;color:var(--mut)}
+.tap:active{opacity:.6}
+.mini .s svg{vertical-align:-.2em;color:var(--dim)}
 .mini .cab{display:flex;align-items:center;justify-content:space-between;min-height:34px}
 .cab .ch{color:var(--dim);font-size:16px}
 .segbar{display:flex;gap:4px;height:6px;margin:14px 0 18px}
@@ -178,7 +180,7 @@ const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
 const num = t => { let s = String(t).trim().replace(/^R\$\s*/i, ''); const neg = s[0] === '-'; s = s.replace(/^[-+]/, '');
   s = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(',', '.');
   const v = parseFloat(s); return isNaN(v) ? null : (neg ? -v : v); };
-const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', todos: false, rede: null };
+const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pf: '', todos: false, rede: null };
 
 function salvarLocal() { try { localStorage.setItem('fin_state', JSON.stringify({linhas: S.linhas, carteiras: S.carteiras, orc: S.orc, desde: S.desde, fila: S.fila})); } catch (e) {} }
 function carregarLocal() {
@@ -216,33 +218,89 @@ async function sync(completo) {
   if (completo) { S.desde = 0; S.linhas = {}; }
   mesclar(await api({acao: 'sync', desde: S.desde})); S.rede = true;
 }
-async function enviarFila() {
-  while (S.fila.length) {
-    const it = S.fila[0];
-    try {
-      if (it.k === 'texto') await api({acao: 'texto', texto: it.texto, id: it.id});
-      else mesclar(await api({acao: 'ops', desde: S.desde, ops: it.ops}));
-    } catch (e) { if (e.rede || e.cfg) return false; }
-    S.fila.shift(); salvarLocal();
+/* ---- tudo é salvo NO APARELHO primeiro; o envio para a planilha acontece em segundo plano ---- */
+const somaMes = (iso, k) => { const [y, m, d] = iso.split('-').map(Number), t = new Date(Date.UTC(y, m - 1 + k, 1)), ult = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate(); t.setUTCDate(Math.min(d, ult)); return t.toISOString().slice(0, 10); };
+const r2 = v => Math.round(Number(v) * 100) / 100;
+function novaLinha(o) { return {id: o.id, data: o.data, tipo: o.tipo, valor: o.valor, cat: o.categoria || 'Outros', desc: o.descricao || '', cart: o.carteira, dest: o.destino || '', grupo: o.grupo || '', n: o.n || 0, total: o.total || 0, at: Date.now(), del: false, comp: o.comprovante || '', prev: !!o.previsto}; }
+function criarLocal(o) {
+  const data = o.data || isoHoje(), valor = r2(o.valor), n = Number(o.n) || 1, base = Object.assign({}, o, {data, valor});
+  if (!(valor > 0)) return;
+  if (o.tipo === 'S' && n > 1) {
+    const p = r2(valor / n);
+    for (let i = 0; i < n; i++) { const l = novaLinha(Object.assign({}, base, {id: o.id + '-' + i, data: somaMes(data, i), valor: i === n - 1 ? r2(valor - p * (n - 1)) : p, grupo: o.id, n: i + 1, total: n})); S.linhas[l.id] = l; }
+  } else { const l = novaLinha(base); S.linhas[l.id] = l; }
+}
+function aplicar(o) {
+  const h = isoHoje(); let g;
+  const tocar = f => Object.values(S.linhas).forEach(r => { if (f(r)) g(r); });
+  const casa = r => r.id === o.id || (r.grupo && r.grupo === o.id);
+  if (o.op === 'add') criarLocal(o);
+  else if (o.op === 'del') { g = r => { r.del = true; r.at = Date.now(); }; tocar(casa); }
+  else if (o.op === 'cat') { g = r => { r.cat = o.categoria; r.at = Date.now(); }; tocar(casa); }
+  else if (o.op === 'edit') { const r = S.linhas[o.id]; if (r) { r.data = o.data || r.data; r.valor = o.valor || r.valor; r.cat = o.categoria || r.cat; if (o.descricao != null) r.desc = o.descricao; r.cart = o.carteira || r.cart; if (o.previsto != null) r.prev = !!o.previsto; r.at = Date.now(); } }
+  else if (o.op === 'receber') { const r = S.linhas[o.id]; if (r && r.prev) { r.prev = false; r.data = o.data || h; if (o.valor) r.valor = o.valor; r.at = Date.now(); } }
+  else if (o.op === 'anexar') { const r = S.linhas[o.id]; if (r) { r.comp = o.url; r.at = Date.now(); } }
+  else if (o.op === 'adiantar') {
+    const q = norm(o.descricao), c = vivas().filter(r => r.grupo && r.tipo === 'S' && r.data > h && norm(r.desc).includes(q));
+    if (c.length) c.filter(r => r.grupo === c[0].grupo).sort((a, b) => b.data.localeCompare(a.data)).slice(0, Number(o.qtd) || 1).forEach(r => { r.data = h; r.at = Date.now(); });
   }
+  else if (o.op === 'carteira') { const i = S.carteiras.findIndex(c => c.nome.toLowerCase() === String(o.nome).toLowerCase()); const c = {nome: o.nome, ini: Number(o.ini) || 0}; if (i >= 0) S.carteiras[i] = c; else S.carteiras.push(c); }
+  else if (o.op === 'orc') { const i = S.orc.findIndex(c => c.categoria === o.categoria); const c = {categoria: o.categoria, limite: Number(o.limite) || 0}; if (i >= 0) S.orc[i] = c; else S.orc.push(c); }
+}
+// mesma leitura de texto do bot ("25 mercado", "+50 mae pix", "300 tv 10x", "t 100 pix din")
+function parseTxt(txt) {
+  const tk = String(txt).trim().replace(/\s+/g, ' ').split(' '), nomes = S.carteiras.map(c => c.nome);
+  const acha = x => (x.length >= 3 || nomes.some(n => n.toLowerCase() === x.toLowerCase())) ? nomes.find(n => n.toLowerCase().startsWith(x.toLowerCase())) : null;
+  if (tk[0].toLowerCase() === 't') { const v = num(tk[1] || ''), a = acha(tk[2] || ''), b = acha(tk[3] || ''); return v > 0 && a && b && a !== b ? {tipo: 'T', valor: v, carteira: a, destino: b} : null; }
+  const p = {tipo: 'S', valor: null, n: 1, carteira: nomes.includes('Pix') ? 'Pix' : nomes[0] || 'Pix', descricao: ''}, desc = [];
+  tk.forEach(w => { if (p.valor === null && /^\+?[\d.,]*\d[\d.,]*$/.test(w)) { p.valor = num(w); if (w[0] === '+') p.tipo = 'E'; } else if (/^\d{1,2}x$/i.test(w)) p.n = parseInt(w); else if (acha(w)) p.carteira = acha(w); else desc.push(w); });
+  p.descricao = desc.join(' '); return p.valor > 0 ? p : null;
+}
+function aplicarTexto(it) {
+  const p = parseTxt(it.texto); if (!p) return false;
+  if (p.tipo === 'T') criarLocal({id: it.id, tipo: 'T', valor: p.valor, carteira: p.carteira, destino: p.destino, categoria: 'Transferência', descricao: 'Transf.'});
+  else criarLocal({id: it.id, tipo: p.tipo, valor: p.valor, carteira: p.carteira, categoria: adivinha(p.descricao, p.tipo), descricao: p.descricao, n: p.n});
   return true;
 }
-async function atualizar(silencioso) {
-  try { if (S.fila.length) await enviarFila(); await sync(); S.rede = true; }
-  catch (e) { S.rede = false; if (!silencioso) aviso(e.message, 'bad'); }
-  render();
-}
-async function fazer(ops, ok) {
+// reaplica o que ainda não foi enviado por cima do que veio da planilha (nada "pisca" ou volta atrás)
+function reaplicar() { S.fila.forEach(it => { if (it.k === 'texto') aplicarTexto(it); else it.ops.forEach(aplicar); }); }
+
+let enviando = false, timer = null, refazer = false;
+function agendar(ms) { clearTimeout(timer); timer = setTimeout(enviar, ms == null ? 500 : ms); }
+// esvazia a fila em segundo plano; no fim, puxa as novidades da planilha
+async function enviar() {
+  if (enviando) { refazer = true; return; }
+  enviando = true;
   try {
-    const r = await api({acao: 'ops', desde: S.desde, ops});
-    const erro = (r.res || []).find(x => x.erro);
-    mesclar(r); S.rede = true;
-    aviso(erro ? erro.erro : (ok || 'Pronto'), erro ? 'bad' : 'good');
-    render(); return !erro;
-  } catch (e) {
-    if (e.rede) { S.fila.push({k: 'ops', ops}); salvarLocal(); aviso('Sem conexão: guardei e envio quando voltar.', ''); render(); return true; }
-    aviso(e.message, 'bad'); return false;
-  }
+    do {
+      refazer = false; let completo = false;
+      while (S.fila.length) {
+        const it = S.fila[0];
+        try {
+          if (it.k === 'texto') { await api({acao: 'texto', texto: it.texto, id: it.id}); S.fila.shift(); }
+          else {
+            const lote = []; let n = 0;
+            while (S.fila[n] && S.fila[n].k === 'ops' && lote.length < 40) { lote.push(...S.fila[n].ops); n++; }
+            const r = await api({acao: 'ops', desde: S.desde, ops: lote}); S.fila.splice(0, n); mesclar(r);
+            const mau = (r.res || []).find(x => x.erro); if (mau) { aviso('A planilha recusou uma alteração: ' + mau.erro, 'bad'); completo = true; }
+          }
+          S.rede = true; salvarLocal();
+        } catch (e) {
+          if (e.rede || e.cfg) { S.rede = false; return; }
+          S.fila.shift(); aviso(e.message, 'bad'); completo = true; salvarLocal();    // erro definitivo: descarta esse item
+        }
+      }
+      try { await sync(completo); S.rede = true; } catch (e) { if (e.rede) { S.rede = false; return; } }
+      reaplicar(); render();
+    } while (refazer);
+  } finally { enviando = false; reaplicar(); render(); }
+}
+const atualizar = () => enviar();
+// salva no aparelho na hora e manda para a planilha em segundo plano
+async function fazer(ops, ok) {
+  ops.forEach(aplicar); S.fila.push({k: 'ops', ops}); salvarLocal();
+  if (ok) aviso(ok, 'good');
+  render(); agendar(); return true;
 }
 let tt;
 function aviso(t, c) { clearTimeout(tt); $('#layer').querySelectorAll('.toast').forEach(x => x.remove()); const d = document.createElement('div'); d.className = 'toast ' + (c || '');
@@ -315,7 +373,7 @@ function telaHome() {
   const rec = vivas().filter(r => !r.prev && r.data <= h).sort((a, b) => b.at - a.at);
   const lista = rec.slice(0, S.todos ? 60 : 8), ncat = Object.keys(mr.cat).length;
   return `<div class="hero"><div class="row1"><div class="logo">${ic('coin')}</div>
-    <div class="pilha">${nomes.slice(0, 3).map(k => banco(k)).join('')}<span class="dot ${S.rede === false ? 'off' : ''}"></span></div></div>
+    <div class="pilha">${nomes.slice(0, 3).map(k => banco(k)).join('')}<span class="dot ${S.rede === false || S.fila.length ? 'off' : ''}"></span></div></div>
     <div><div class="lbl">Saldo total agora</div><div class="big">${brl(x.total)}</div></div></div>
   <div class="dois">
    <div class="mini" data-a="tab" data-t="mais"><div class="cab"><div style="display:flex">${nomes.slice(0, 3).map(k => banco(k)).join('')}</div><span class="ch">${ic('right')}</span></div>
@@ -330,18 +388,24 @@ function telaHome() {
   <div class="card"><div class="lbl">Saldo em ${nomes.length} ${nomes.length === 1 ? 'conta' : 'contas'}</div><div class="big" style="margin-top:4px">${brl(x.total)}</div>
    <div class="segbar">${nomes.map(k => `<i style="background:${corBanco(k)};flex:${Math.max(x.s[k], 0) / pos + .02}"></i>`).join('')}</div>
    ${nomes.map(k => `<div class="row" data-a="ajuste" data-c="${esc(k)}" style="padding:10px 0;border:0">${banco(k, 1)}<div class="t"><b>${brl(x.s[k])}</b><span>${esc(k)} • ${Math.round(Math.max(x.s[k], 0) / pos * 100)}%</span></div><span class="mut" style="font-size:13px">Ajustar</span></div>`).join('')}
-   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px"><div class="mini" style="min-height:0;border-radius:20px;padding:12px 14px"><div class="s">Líquido</div><div class="v">${brl(x.liq)}</div></div><div class="mini" style="min-height:0;border-radius:20px;padding:12px 14px"><div class="s">A receber</div><div class="v lima">${brl(x.pE)}</div></div></div></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+    <div class="mini tap" data-a="pf" data-f="E" style="min-height:0;border-radius:20px;padding:12px 14px"><div class="s">A receber ${ic('right')}</div><div class="v lima">${brl(x.pE)}</div></div>
+    <div class="mini tap" data-a="pf" data-f="S" style="min-height:0;border-radius:20px;padding:12px 14px"><div class="s">A pagar ${ic('right')}</div><div class="v">${brl(x.pS)}</div></div>
+    <div class="mini" style="min-height:0;border-radius:20px;padding:12px 14px;grid-column:span 2"><div class="s">Líquido (saldo menos o já comprometido)</div><div class="v">${brl(x.liq)}</div></div></div></div>
   <div class="sec"><h2>Últimos lançamentos</h2>${S.fila.length ? `<span class="badge">${S.fila.length} a enviar</span>` : ''}</div>
   <div class="card" style="padding:6px 18px">${lista.length ? lista.map(r => linha(r)).join('') : '<div class="empty">Nada lançado ainda.</div>'}</div>
   ${rec.length > 8 ? `<button class="btn full" data-a="todos">${S.todos ? 'Mostrar menos' : 'Mostrar mais'}</button>` : ''}`;
 }
+const pendentes = () => { const h = isoHoje(); return vivas().filter(r => (r.prev || r.data > h) && r.tipo !== 'T').sort((a, b) => a.data.localeCompare(b.data)); };
 function telaPrev() {
-  const L2 = vivas().filter(r => r.prev).sort((a, b) => a.data.localeCompare(b.data));
-  let e = 0, s = 0; L2.forEach(r => r.tipo === 'E' ? e += r.valor : s += r.valor);
+  const todos = pendentes(); let e = 0, sd = 0; todos.forEach(r => r.tipo === 'E' ? e += r.valor : sd += r.valor);
+  const L2 = todos.filter(r => !S.pf || r.tipo === S.pf);
   return `<h1 class="title">O que ainda<br><span>vai acontecer.</span></h1>
-  <div class="dois"><div class="mini" style="min-height:110px"><div class="s">A receber</div><div class="v lima" style="font-size:24px">${brl(e)}</div></div><div class="mini" style="min-height:110px"><div class="s">A pagar</div><div class="v" style="font-size:24px">${brl(s)}</div></div></div>
-  <div class="card" style="padding:6px 18px">${L2.length ? L2.map(r => linha(r, `<button class="btn sm ${r.tipo === 'E' ? 'pri' : 'bco'}" data-a="receber" data-id="${esc(r.id)}">${r.tipo === 'E' ? 'Recebi' : 'Paguei'}</button>`)).join('') : `<div class="empty">Nenhum valor previsto.<br>Toque no + para anotar um salário ou uma conta que ainda vai acontecer.</div>`}</div>
-  <div class="hint">Previstos não mexem no saldo até você confirmar.</div>`;
+  <div class="dois"><div class="mini tap" data-a="pf" data-f="E" style="min-height:110px;${S.pf === 'E' ? 'border-color:var(--lima)' : ''}"><div class="s">A receber</div><div class="v lima" style="font-size:24px">${brl(e)}</div></div>
+   <div class="mini tap" data-a="pf" data-f="S" style="min-height:110px;${S.pf === 'S' ? 'border-color:#fff' : ''}"><div class="s">A pagar</div><div class="v" style="font-size:24px">${brl(sd)}</div></div></div>
+  <div class="pills">${[['', 'Tudo'], ['E', 'A receber'], ['S', 'A pagar']].map(([k, n]) => `<button class="pill ${(S.pf || '') === k ? 'on' : ''}" data-a="pf" data-f="${k}">${n}</button>`).join('')}</div>
+  <div class="card" style="padding:6px 18px">${L2.length ? L2.map(r => linha(r, `<button class="btn sm ${r.tipo === 'E' ? 'pri' : 'bco'}" data-a="receber" data-id="${esc(r.id)}">${r.tipo === 'E' ? 'Recebi' : 'Paguei'}</button>`)).join('') : `<div class="empty">Nada por aqui.<br>Toque no + para anotar um salário ou uma conta que ainda vai acontecer.</div>`}</div>
+  <div class="hint">Toque em um item para editar valor, data, categoria ou conta. Previstos e parcelas futuras não mexem no saldo até a data chegar ou você confirmar.</div>`;
 }
 function telaMes() {
   const [y, m] = S.mes.split('-').map(Number), r = mesResumo(S.mes), o = {}; S.orc.forEach(x => o[x.categoria] = x.limite);
@@ -457,6 +521,7 @@ function abrirDet(id) {
   <div class="f"><label>Descrição</label><input id="ed" value="${esc(r.desc)}"></div>
   <div class="two"><div class="f"><label>Categoria</label><select id="ec">${opts(Array.from(new Set(CATS.concat([r.cat, 'Receita', 'Ajuste', 'Transferência']))), r.cat)}</select></div>
    <div class="f"><label>Conta</label><select id="ew">${opts(cs, r.cart)}</select></div></div>
+  <label class="chk" style="margin-top:0"><input id="ep" type="checkbox" ${r.prev ? 'checked' : ''}> Ainda vai acontecer (previsto, não mexe no saldo)</label>
   ${r.grupo ? `<div class="hint" style="margin-top:0">Parcela ${r.n}/${r.total}. A edição vale só para esta parcela.</div>` : ''}
   <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${r.comp ? `<a class="btn" href="${esc(r.comp)}" target="_blank" rel="noopener">${ic('clip')} Ver comprovante</a>` : ''}
    <label class="btn" style="margin:0">${ic('scan')} ${r.comp ? 'Trocar' : 'Anexar'} comprovante<input id="ea" type="file" accept="image/*,application/pdf" style="display:none"></label></div>
@@ -473,7 +538,7 @@ function abrirAjuste(c) {
 }
 function abrirReceber(id) {
   const r = S.linhas[id]; if (!r) return;
-  folha(`<h3>${r.tipo === 'E' ? 'Recebi' : 'Paguei'}: ${esc(r.desc || r.cat)}</h3><div class="hint" style="margin-top:-6px">Previsto ${brl(r.valor)} para ${dt(r.data)}. Se veio diferente, corrija o valor.</div>
+  folha(`<h3>${r.tipo === 'E' ? 'Recebi' : 'Paguei'}: ${esc(r.desc || r.cat)}</h3><div class="hint" style="margin-top:-6px">${r.prev ? 'Previsto' : 'Agendado'} ${brl(r.valor)} para ${dt(r.data)}. Se veio diferente, corrija o valor.</div>
   <div class="f"><label>Valor real</label><input id="rv" inputmode="decimal" value="${String(r.valor).replace('.', ',')}" style="font-size:28px;font-weight:600;padding:16px 18px"></div>
   <div style="display:flex;gap:10px"><button class="btn no" data-a="apagar" data-id="${esc(id)}" aria-label="Excluir previsto">${ic('trash')}</button><button class="btn pri" style="flex:1" data-a="okreceber" data-id="${esc(id)}">Confirmar hoje</button></div>`);
 }
@@ -491,6 +556,7 @@ async function acao(a, el) {
   else if (a === 'todos') { S.todos = !S.todos; render(); }
   else if (a === 'mm') { const [y, m] = S.mes.split('-').map(Number), n = new Date(y, m - 1 + Number(d.d), 1); S.mes = n.getFullYear() + '-' + pad(n.getMonth() + 1); render(); }
   else if (a === 'mv') { S.mview = d.v; render(); }
+  else if (a === 'pf') { S.pf = (S.tab === 'prev' && S.pf === d.f) ? '' : d.f; S.tab = 'prev'; render(); $('#main').scrollTop = 0; }
   else if (a === 'novo') abrirNovo(!!d.p, !!d.s);
   else if (a === 'fechar') fechar();
   else if (a === 'salvarnovo') await salvarNovo();
@@ -509,10 +575,11 @@ async function acao(a, el) {
     if (dif === 0) { fechar(); return aviso('Já está certo', 'good'); }
     fechar(); await fazer([{op: 'add', id: uid(), tipo: dif > 0 ? 'E' : 'S', valor: Math.abs(dif), carteira: c, categoria: 'Ajuste', descricao: 'Ajuste de saldo'}], 'Ajuste de ' + (dif > 0 ? '+' : '−') + brl(Math.abs(dif)));
   }
-  else if (a === 'okreceber') { const v = num($('#rv').value); fechar(); await fazer([{op: 'receber', id: d.id, valor: v > 0 ? v : undefined}], 'Confirmado'); }
+  else if (a === 'okreceber') { const v = num($('#rv').value); const r0 = S.linhas[d.id]; fechar(); await fazer([r0 && !r0.prev ? {op: 'edit', id: d.id, data: isoHoje(), valor: v > 0 ? v : undefined} : {op: 'receber', id: d.id, valor: v > 0 ? v : undefined}], 'Confirmado'); }
   else if (a === 'salvaredit') {
     const v = num($('#ev').value); if (!(v > 0)) return aviso('Valor inválido.', 'bad');
-    const op = {op: 'edit', id: d.id, valor: v, data: $('#et').value, descricao: $('#ed').value.trim(), categoria: $('#ec').value, carteira: $('#ew').value};
+    const op = {op: 'edit', id: d.id, valor: v, data: $('#et').value, descricao: $('#ed').value.trim(), categoria: $('#ec').value, carteira: $('#ew').value}, r0 = S.linhas[d.id];
+    if (r0 && $('#ep').checked !== r0.prev) op.previsto = $('#ep').checked ? 1 : 0;
     fechar(); await fazer([op], 'Atualizado');
   }
   else if (a === 'apagar') { fechar(); await fazer([{op: 'del', id: d.id}], 'Apagado'); }
@@ -522,7 +589,7 @@ async function acao(a, el) {
   }
   else if (a === 'adiantar') { const x = parcelas().find(p => p.k === d.k); if (x) await fazer([{op: 'adiantar', descricao: x.d, qtd: 1}], 'Parcela adiantada'); }
   else if (a === 'qenviar') await enviarQuick();
-  else if (a === 'resync') { try { await sync(true); aviso('Tudo recarregado', 'good'); } catch (e) { aviso(e.message, 'bad'); } render(); }
+  else if (a === 'resync') { try { await sync(true); reaplicar(); aviso('Tudo recarregado', 'good'); } catch (e) { aviso(e.message, 'bad'); } render(); }
   else if (a === 'salvarcfg') {
     S.cfg.url = $('#cu').value.trim(); S.cfg.chave = $('#cc').value.trim(); await salvarCfg();
     try { const r = await api({acao: 'resumo'}); aviso('Conectado. Total ' + brl(r.total), 'good'); await sync(true); } catch (e) { aviso(e.message, 'bad'); }
@@ -531,20 +598,23 @@ async function acao(a, el) {
 }
 async function enviarQuick() {
   const i = $('#qt'), t = i.value.trim(); if (!t) return;
-  const id = uid(); i.disabled = true;
-  try { const r = await api({acao: 'texto', texto: t, id}); i.value = ''; aviso(r.resumo, 'good'); await sync(); }
-  catch (e) { if (e.rede) { S.fila.push({k: 'texto', id, texto: t}); salvarLocal(); i.value = ''; aviso('Sem conexão: guardei e envio quando voltar.', ''); } else aviso(e.message, 'bad'); }
-  render(); const q = $('#qt'); if (q) q.focus();
+  const it = {k: 'texto', id: uid(), texto: t};
+  if (!aplicarTexto(it)) return aviso('Não entendi. Exemplo: 25 mercado', 'bad');
+  S.fila.push(it); salvarLocal(); i.value = '';
+  const l = S.linhas[it.id] || S.linhas[it.id + '-0'];
+  aviso(l ? (l.tipo === 'E' ? 'Entrada ' : l.tipo === 'T' ? 'Transferência ' : 'Saída ') + brl(l.valor) + ' • ' + (l.desc || l.cat) : 'Lançado', 'good');
+  render(); const q = $('#qt'); if (q) q.focus(); agendar();
 }
 document.addEventListener('click', e => { const el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return; acao(el.dataset.a, el); });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'qt') { e.preventDefault(); enviarQuick(); } if (e.key === 'Enter' && e.target.id === 'ar') { const b = document.querySelector('[data-a=okajuste]'); if (b) b.click(); } });
-window.addEventListener('online', () => atualizar(true));
-document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizar(true); });
+window.addEventListener('online', () => enviar());
+document.addEventListener('visibilitychange', () => { if (!document.hidden) enviar(); });
+setInterval(() => { if (!document.hidden) enviar(); }, 60000);
 
 /* ============ início ============ */
 carregarLocal(); render();
 if (!S.cfg.url) { S.tab = 'mais'; render(); aviso('Primeiro configure o link e a chave.', ''); }
-else atualizar(true);
+else { reaplicar(); render(); enviar(); }
 </script>
 </body>
 </html>
