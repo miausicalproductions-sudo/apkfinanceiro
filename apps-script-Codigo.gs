@@ -28,6 +28,7 @@ const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'T
 //          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem
 const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem'];
 const NC = H.length;
+const VERSAO = 4;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
 
 /* ---------- INSTALAÇÃO ---------- */
 function instalar() {
@@ -209,7 +210,7 @@ function criar_(o) {
     // "3 de 10": valor = de CADA parcela; a atual (pa) cai hoje, as seguintes viram previstos no dia do vencimento
     const dia = Math.min(Math.max(Math.floor(Number(o.dia)) || Number(hoje_().slice(8)), 1), 31), h = hoje_();
     const ref = h.slice(0, 8) + String(dia).padStart(2, '0');          // vencimento deste mês
-    const prim = o.previsto ? proxDia_(dia) : ref;
+    const prim = o.previsto ? (S_(o.data) > h ? S_(o.data) : proxDia_(dia)) : ref;
     for (let k = pa; k <= n; k++) {
       const atual = k === pa && !o.previsto;
       lista.push(Object.assign({}, base, { id: o.id + '-' + k, data: atual ? (o.data || h) : somaMes_(prim, k - pa),
@@ -860,7 +861,7 @@ function agenda_() {
 
 function sync_(desde) {
   const agora = Date.now();
-  return { agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_(), metas: metas_() };
+  return { ver: VERSAO, agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_(), metas: metas_() };
 }
 function api_(b) {
   if (b.acao === 'sync') return sync_(Number(b.desde || 0));
@@ -939,7 +940,7 @@ function doPost(e) {
     return json_(api_(b));
   } catch (err) { log_(err); return json_({ erro: String(err.message) }); }
 }
-function doGet() { return ContentService.createTextOutput('Financeiro online ✔'); }
+function doGet() { return ContentService.createTextOutput('Financeiro online ✔ (código v' + VERSAO + ')'); }
 
 /* ---------- TESTES ---------- */
 function testar() {

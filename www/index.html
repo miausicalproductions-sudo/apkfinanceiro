@@ -207,7 +207,7 @@ const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
 const num = t => { let s = String(t).trim().replace(/^R\$\s*/i, ''); const neg = s[0] === '-'; s = s.replace(/^[-+]/, '');
   s = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(',', '.');
   const v = parseFloat(s); return isNaN(v) ? null : (neg ? -v : v); };
-const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, pf: '', todos: false, rede: null };
+const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, srvVer: null, pf: '', todos: false, rede: null };
 
 function salvarLocal() { try { localStorage.setItem('fin_state', JSON.stringify({linhas: S.linhas, carteiras: S.carteiras, orc: S.orc, metas: S.metas, desde: S.desde, fila: S.fila})); } catch (e) {} clearTimeout(tAg); tAg = setTimeout(() => { try { gravarAgenda(); } catch (e) {} }, 800); }
 function carregarLocal() {
@@ -239,7 +239,7 @@ function mesclar(r) {
   if (r.carteiras) S.carteiras = r.carteiras;
   if (r.orcamentos) S.orc = r.orcamentos;
   if (r.metas) S.metas = r.metas;
-  if (r.agora) S.desde = r.agora - 2000;
+  if (r.agora) { S.desde = r.agora - 2000; S.srvVer = Number(r.ver) || 0; }
   salvarLocal();
 }
 async function sync(completo) {
@@ -257,7 +257,7 @@ function criarLocal(o) {
   if (!(valor > 0)) return;
   const pa = Math.floor(Number(o.pAtual) || 0);
   if (o.tipo === 'S' && n > 1 && pa >= 1 && pa <= n) {      // "3 de 10": valor de CADA parcela; a atual cai hoje, as outras viram previstos no dia do vencimento
-    const h = isoHoje(), dia = Math.min(Math.max(Math.floor(Number(o.dia)) || Number(h.slice(8)), 1), 31), ref = h.slice(0, 8) + pad(dia), prim = o.previsto ? proxDia(dia) : ref;
+    const h = isoHoje(), dia = Math.min(Math.max(Math.floor(Number(o.dia)) || Number(h.slice(8)), 1), 31), ref = h.slice(0, 8) + pad(dia), prim = o.previsto ? (o.data > h ? o.data : proxDia(dia)) : ref;
     for (let k = pa; k <= n; k++) { const atual = k === pa && !o.previsto;
       const l = novaLinha(Object.assign({}, base, {id: o.id + '-' + k, data: atual ? (o.data || h) : somaMes(prim, k - pa), valor, grupo: o.id, n: k, total: n, previsto: atual ? 0 : 1})); S.linhas[l.id] = l; }
   } else if (o.tipo === 'S' && n > 1) {
@@ -651,6 +651,8 @@ function cartaoPrevisto() {
    <div class="leg"><span><i style="background:var(--lima)"></i>A receber</span><b class="lima">+${brl(p.pe)}</b></div>
    <div class="leg"><span><i style="background:var(--verm)"></i>A pagar</span><b>−${brl(p.ps)}</b></div></div>`;
 }
+const VSERV = 4;
+const avisoServ = () => S.srvVer !== null && S.srvVer < VSERV ? `<div class="card" style="border-color:#5a1f22"><b style="color:var(--verm)">${ic('alert')} O código do Apps Script está desatualizado</b><div class="mut" style="font-size:13.5px;margin:6px 0 10px">Sem atualizar, parcelas, metas e previstos ficam errados na planilha. Abra o código novo, copie tudo, cole no Apps Script no lugar do antigo e crie uma nova versão em Implantar > Gerenciar implantações > editar. Depois rode a função <b style="color:#fff">atualizar</b> uma vez.</div><a class="btn pri full" href="https://raw.githubusercontent.com/miausicalproductions-sudo/apkfinanceiro/main/apps-script-Codigo.gs" target="_blank" rel="noopener">Abrir o código novo</a></div>` : '';
 function telaHome() {
   const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7)), pv = projecao();
   const pos = nomes.reduce((a, k) => a + Math.max(x.s[k], 0), 0) || 1;
@@ -659,6 +661,7 @@ function telaHome() {
   return `<div class="hero"><div class="row1"><div class="logo">${ic('coin')}</div>
     <div class="pilha">${nomes.slice(0, 3).map(k => banco(k)).join('')}<span class="dot ${S.rede === false || S.fila.length ? 'off' : ''}"></span></div></div>
     <div><div class="lbl">Saldo total agora</div><div class="big">${brl(x.total)}</div>${pv.pts.length > 1 ? `<div class="lbl" data-a="pf" data-f="" style="margin-top:6px">Previsto ${brl(pv.fim)} ${S.pv === 'tudo' ? 'após tudo que está agendado' : 'até o fim de ' + nomeMes(pv.lim)} ${ic('right')}</div>` : ''}</div></div>
+  ${avisoServ()}
   <div class="dois">
    <div class="mini" data-a="tab" data-t="mais"><div class="cab"><div style="display:flex">${nomes.slice(0, 3).map(k => banco(k)).join('')}</div><span class="ch">${ic('right')}</span></div>
      <div><div class="s">Saldo em contas</div><div class="v">${brl(x.total)}</div><div class="s">${nomes.length} ${nomes.length === 1 ? 'conta' : 'contas'}</div></div></div>
@@ -727,6 +730,7 @@ function telaMais() {
    <button class="btn sm" style="margin-top:9px" data-a="adiantar" data-k="${esc(x.k)}">Adiantar uma parcela</button></div>`).join('') + `<b>Falta pagar: ${brl(P.reduce((a, x) => a + x.vf, 0))}</b>` : '<div class="empty">Nenhuma parcela pendente.</div>'}</div>
   <div class="sec"><h2>Contas</h2><button class="btn sm" data-a="novacart">${ic('plus')} Conta</button></div>
   <div class="card" style="padding:6px 18px">${S.carteiras.map(k => `<div class="row">${banco(k.nome, 1)}<div class="t"><b>${esc(k.nome)}</b><span>saldo inicial ${brl(k.ini)}</span></div><button class="btn sm" data-a="ajuste" data-c="${esc(k.nome)}">Ajustar</button></div>`).join('') || '<div class="empty">Sem contas.</div>'}</div>
+  <div class="hint" style="margin:-4px 6px 12px">Código do Apps Script: ${S.srvVer === null ? 'ainda não conferido' : S.srvVer >= VSERV ? 'atualizado ✔ (v' + S.srvVer + ')' : 'DESATUALIZADO (v' + S.srvVer + ', o certo é v' + VSERV + ')'}</div>
   <div class="sec"><h2>Avisos</h2></div>
   <div class="card"><div class="hint" style="margin:0 0 12px">O app avisa na véspera e no dia de cada vencimento (às 9h) e lembra de novo às 18h se ainda não foi pago. Vale para contas previstas e parcelas.</div>
    <div style="display:flex;gap:8px"><button class="btn pri" style="flex:1" data-a="avisoperm">${ic('bell')} Ativar avisos</button><button class="btn" data-a="avisotestar">Testar</button></div></div>
@@ -809,7 +813,7 @@ function fechar() { const s = $('#sheet'); if (s) s.remove(); }
 const opts = (arr, sel) => arr.map(v => `<option ${v === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
 let form = {};
 function abrirNovo(prev, scan) {
-  form = {tipo: 'S', url: '', img: '', catTocada: false};
+  form = {tipo: 'S', url: '', img: '', catTocada: false, vmode: 'total', prev: !!prev};
   const cs = S.carteiras.map(c => c.nome);
   folha(`<h3>${prev ? 'Novo previsto' : 'Novo lançamento'}</h3>
   <div class="seg" id="sg"><button class="on" data-v="S">Saída</button><button data-v="E">Entrada</button><button data-v="T">Transferir</button></div>
@@ -820,16 +824,21 @@ function abrirNovo(prev, scan) {
    <div class="f" id="gcat"><label>Categoria</label><select id="fcat"><option value="">Automática</option>${opts(CATS)}</select></div></div>
   <div class="two"><div class="f"><label>${prev ? 'Data prevista' : 'Data'}</label><input id="fdt" type="date" value="${isoHoje()}"></div>
    <div class="f" id="gn"><label>Parcelas (total)</label><input id="fn" inputmode="numeric" placeholder="1"></div></div>
-  <div class="two" id="gpar" style="display:none"><div class="f"><label>Parcela atual</label><input id="fpa" inputmode="numeric" placeholder="1"></div>
+  <div class="two" id="gpar" style="display:none"><div class="seg" id="svm" style="grid-column:span 2;margin-bottom:4px"><button class="on" data-v="total">O valor é o total</button><button data-v="parc">O valor é de cada parcela</button></div><div class="f"><label>Parcela atual (se já pagou outras)</label><input id="fpa" inputmode="numeric" placeholder="1"></div>
    <div class="f"><label>Vence todo dia</label><input id="fdia" inputmode="numeric" placeholder="${Number(isoHoje().slice(8))}"></div>
-   <div class="hint" id="gph" style="grid-column:span 2;margin:-4px 6px 8px">Com “parcela atual”, o valor acima é o de cada parcela: a atual cai hoje e as próximas viram previstos no dia do vencimento (com aviso).</div></div>
+   <div id="gpv" style="grid-column:span 2;margin:0 6px 6px;font-weight:600;color:var(--lima)"></div><div class="hint" id="gph" style="grid-column:span 2;margin:-4px 6px 8px">Ex.: parcela atual 3 de 10 = a 3ª é paga na data escolhida e as 7 restantes viram previstos todo mês no dia do vencimento (com aviso). Deixe em branco se está começando agora.</div></div>
   <div id="fprod"></div>
   <div class="f" id="gcomp"><label>Comprovante (foto, print ou PDF)</label><label class="btn full" style="margin:0;justify-content:flex-start;padding:15px 18px">${ic('scan')} Escolher foto ou arquivo<input id="ff" type="file" accept="image/*,application/pdf" style="display:none"></label><div class="hint" id="fh" style="margin:8px 6px 0">Eu leio o valor e preencho para você.</div></div>
-  <label class="chk"><input id="fp" type="checkbox" ${prev ? 'checked' : ''}> Ainda vai acontecer (previsto, não mexe no saldo)</label>
+  <div class="hint" style="margin-top:0">${prev ? 'Este lançamento fica em Previstos e só mexe no saldo quando você confirmar.' : 'Com uma data futura, o lançamento fica em Previstos e só mexe no saldo quando chegar o dia.'}</div>
   <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Cancelar</button><button class="btn pri" style="flex:1" data-a="salvarnovo">Salvar</button></div>`);
   const gp = () => { const n = parseInt($('#fn').value) || 1; $('#gpar').style.display = form.tipo === 'S' && n > 1 ? '' : 'none'; };
+  const pv = () => { const v = num($('#fv').value), n = parseInt($('#fn').value) || 1, pa = parseInt($('#fpa').value) || 0; const el = $('#gpv'); if (!el) return;
+    if (!(v > 0) || n < 2) { el.textContent = ''; return; } const per = form.vmode === 'parc' ? v : r2(v / n);
+    el.textContent = n + 'x de ' + brl(per) + ' (total ' + brl(per * n) + ')' + (pa >= 1 && pa < n ? ' • a ' + pa + 'ª entra agora e faltam ' + (n - pa) : ''); };
+  ['#fv', '#fn', '#fpa'].forEach(q => $(q).addEventListener('input', pv));
   $('#fn').addEventListener('input', gp);
   $('#fcat').addEventListener('change', () => { form.catTocada = true; });
+  $('#svm').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; form.vmode = b.dataset.v; $('#svm').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); pv(); });
   let tb; $('#fd').addEventListener('input', () => { clearTimeout(tb); form.img = ''; $('#fprod').innerHTML = ''; tb = setTimeout(async () => {
     if (form.tipo !== 'S') return; const q = $('#fd').value; const r = await buscarProduto(q); if (!r || $('#fd').value !== q || !$('#fprod')) return;
     form.img = r.img; if (r.cat && !form.catTocada && !$('#fcat').value) { $('#fcat').value = r.cat; }
@@ -855,7 +864,8 @@ async function salvarNovo() {
   if (tipo === 'T') { op.destino = $('#fdst').value; if (op.destino === cart) return aviso('Escolha contas diferentes.', 'bad'); op.categoria = 'Transferência'; op.descricao = 'Transf.'; }
   else { op.descricao = desc; op.categoria = $('#fcat').value || adivinha(desc, tipo); if (tipo === 'S') { op.n = parseInt($('#fn').value) || 1; const pa = parseInt($('#fpa').value) || 0;
       if (op.n > 1 && pa >= 1 && pa <= op.n) { op.pAtual = pa; const dia = parseInt($('#fdia').value); if (dia >= 1 && dia <= 31) op.dia = dia; } }
-    if (form.url) op.comprovante = form.url; if (form.img && tipo === 'S') op.imagem = form.img; if ($('#fp').checked) op.previsto = 1; }
+    if (tipo === 'S' && op.n > 1) op.valor = op.pAtual ? (form.vmode === 'parc' ? v : r2(v / op.n)) : (form.vmode === 'parc' ? r2(v * op.n) : v);
+    if (form.url) op.comprovante = form.url; if (form.img && tipo === 'S') op.imagem = form.img; if (form.prev || data > isoHoje()) op.previsto = 1; }
   fechar(); await fazer([op], op.pAtual ? 'Parcela ' + op.pAtual + '/' + op.n + ' lançada' : 'Lançado');
   if (tipo === 'S' && !op.imagem && querProduto({tipo, descricao: desc})) fotoDepois(op.id, desc);
 }
@@ -887,7 +897,6 @@ function abrirDet(id) {
   <div class="f"><label>Descrição</label><input id="ed" value="${esc(r.desc)}"></div>
   <div class="two"><div class="f"><label>Categoria</label><select id="ec">${opts(Array.from(new Set(CATS.concat([r.cat, 'Receita', 'Ajuste', 'Transferência']))), r.cat)}</select></div>
    <div class="f"><label>Conta</label><select id="ew">${opts(cs, r.cart)}</select></div></div>
-  <label class="chk" style="margin-top:0"><input id="ep" type="checkbox" ${r.prev ? 'checked' : ''}> Ainda vai acontecer (previsto, não mexe no saldo)</label>
   ${r.grupo ? `<div class="hint" style="margin-top:0">Parcela ${r.n}/${r.total}. A edição vale só para esta parcela (a foto vale para todas).</div>` : ''}
   ${r.tipo === 'S' ? `<div class="prod" id="dfoto">${detFoto(r.img)}</div>` : ''}
   <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${r.comp ? `<a class="btn" href="${esc(r.comp)}" target="_blank" rel="noopener">${ic('clip')} Ver comprovante</a>` : ''}
@@ -947,7 +956,7 @@ async function acao(a, el) {
   else if (a === 'salvaredit') {
     const v = num($('#ev').value); if (!(v > 0)) return aviso('Valor inválido.', 'bad');
     const op = {op: 'edit', id: d.id, valor: v, data: $('#et').value, descricao: $('#ed').value.trim(), categoria: $('#ec').value, carteira: $('#ew').value}, r0 = S.linhas[d.id];
-    if (r0 && $('#ep').checked !== r0.prev) op.previsto = $('#ep').checked ? 1 : 0;
+    if (r0 && !r0.prev && op.data > isoHoje()) op.previsto = 1;     // mudou para uma data futura: passa a ser previsto
     const ops = [op];
     if (r0 && r0.tipo === 'S' && detImg !== null && detImg !== (r0.img || '')) {
       if (r0.grupo) Object.values(S.linhas).filter(x => x.grupo === r0.grupo && x.id !== r0.id && !x.del).forEach(x => ops.push({op: 'edit', id: x.id, imagem: detImg})); op.imagem = detImg; }
