@@ -93,6 +93,8 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#7
 .par .bb i{display:block;width:14px;border-radius:9px;min-height:6px}
 .par .e{background:linear-gradient(180deg,#b6ff2a,#2fbf2f)}.par .d{background:linear-gradient(180deg,#ff6b6b,#e03a3a)}
 .par small{color:var(--mut);font-size:12px;text-transform:lowercase}
+.proj{width:100%;height:auto;display:block;margin-top:14px;overflow:visible}
+.axis{display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin:2px 2px 8px}
 .leg{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:15px}
 .leg i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}
 .prog{height:6px;background:#1c1c1c;border-radius:9px;overflow:hidden;margin-top:9px}
@@ -367,20 +369,51 @@ const barras = (cat, tot) => { const k = Object.keys(cat).sort((a, b) => cat[b] 
   return `<div class="mbar">${k.map(c => `<i style="background:${(CATV[c] || CATV.Outros)[1]};flex:${Math.max(.25, cat[c] / (tot || 1))}"></i>`).join('') || '<i style="background:#222;flex:1"></i>'}</div>`; };
 
 /* ============ telas ============ */
+/* ---- saldo previsto: onde o saldo vai chegar quando tudo que está agendado acontecer ---- */
+function projecao() {
+  const x = saldos(), h = isoHoje(); let v = x.total; const pts = [{d: h, v, t: 0}];
+  pendentes().forEach(r => { v += r.tipo === 'E' ? r.valor : -r.valor; pts.push({d: r.data < h ? h : r.data, v, t: r.tipo === 'E' ? 1 : -1}); });
+  return {x, pts, fim: v};
+}
+function svgPrevisto(p) {
+  const W = 320, H = 130, px = 10, py = 18, d0 = new Date(p.pts[0].d).getTime(), last = p.pts[p.pts.length - 1];
+  const dias = d => Math.round((new Date(d).getTime() - d0) / 864e5), span = Math.max(7, dias(last.d));
+  const vs = p.pts.map(q => q.v), mn0 = Math.min(...vs), mx0 = Math.max(...vs), pad = (mx0 - mn0 || Math.abs(mx0) || 1) * .22, mn = mn0 - pad, mx = mx0 + pad;
+  const X = d => px + dias(d) / span * (W - 2 * px), Y = v => py + (1 - (v - mn) / (mx - mn)) * (H - 2 * py);
+  const cor = p.fim >= p.x.total ? '#c5f400' : '#ff4d4d';
+  let path = `M${px},${Y(p.pts[0].v)}`;
+  for (let i = 1; i < p.pts.length; i++) path += ` L${X(p.pts[i].d)},${Y(p.pts[i - 1].v)} L${X(p.pts[i].d)},${Y(p.pts[i].v)}`;
+  path += ` L${W - px},${Y(last.v)}`;
+  const dots = p.pts.slice(1).map(q => `<circle cx="${X(q.d)}" cy="${Y(q.v)}" r="4.5" fill="${q.t > 0 ? '#c5f400' : '#ff4d4d'}" stroke="#0e0e0e" stroke-width="2"/>`).join('');
+  const zero = mn < 0 && mx > 0 ? `<line x1="${px}" x2="${W - px}" y1="${Y(0)}" y2="${Y(0)}" stroke="#3a3a3a" stroke-width="1"/>` : '';
+  return `<svg class="proj" viewBox="0 0 ${W} ${H}" role="img" aria-label="Projeção do saldo"><defs><linearGradient id="gp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${cor}" stop-opacity=".32"/><stop offset="1" stop-color="${cor}" stop-opacity="0"/></linearGradient></defs>
+   ${zero}<line x1="${px}" x2="${W - px}" y1="${Y(p.pts[0].v)}" y2="${Y(p.pts[0].v)}" stroke="#3a3a3a" stroke-dasharray="3 5"/>
+   <path d="${path} L${W - px},${H - 4} L${px},${H - 4} Z" fill="url(#gp)"/><path d="${path}" fill="none" stroke="${cor}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+   <circle cx="${px}" cy="${Y(p.pts[0].v)}" r="5" fill="#fff" stroke="#0e0e0e" stroke-width="2"/>${dots}</svg>`;
+}
+function cartaoPrevisto() {
+  const p = projecao(), x = p.x, tem = p.pts.length > 1, fimD = p.pts[p.pts.length - 1].d;
+  return `<div class="card tap" data-a="pf" data-f=""><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="lbl">Saldo previsto</div><div class="big" style="font-size:30px;margin-top:4px;color:${p.fim < 0 ? 'var(--verm)' : '#fff'}">${brl(p.fim)}</div></div><span class="mut" style="font-size:18px;margin-top:2px">${ic('right')}</span></div>
+   ${tem ? `${svgPrevisto(p)}<div class="axis"><span>hoje</span><span>${dt(fimD).slice(0, 5)}</span></div>` : `<div class="hint" style="margin:10px 2px 4px">Nada previsto ainda. Toque no + e marque “Ainda vai acontecer” para anotar um salário ou uma conta futura.</div>`}
+   <div class="leg"><span><i style="background:#fff"></i>Saldo agora</span><b>${brl(x.total)}</b></div>
+   <div class="leg"><span><i style="background:var(--lima)"></i>A receber</span><b class="lima">+${brl(x.pE)}</b></div>
+   <div class="leg"><span><i style="background:var(--verm)"></i>A pagar</span><b>−${brl(x.pS)}</b></div></div>`;
+}
 function telaHome() {
-  const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7));
+  const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7)), pv = projecao();
   const pos = nomes.reduce((a, k) => a + Math.max(x.s[k], 0), 0) || 1;
   const rec = vivas().filter(r => !r.prev && r.data <= h).sort((a, b) => b.at - a.at);
   const lista = rec.slice(0, S.todos ? 60 : 8), ncat = Object.keys(mr.cat).length;
   return `<div class="hero"><div class="row1"><div class="logo">${ic('coin')}</div>
     <div class="pilha">${nomes.slice(0, 3).map(k => banco(k)).join('')}<span class="dot ${S.rede === false || S.fila.length ? 'off' : ''}"></span></div></div>
-    <div><div class="lbl">Saldo total agora</div><div class="big">${brl(x.total)}</div></div></div>
+    <div><div class="lbl">Saldo total agora</div><div class="big">${brl(x.total)}</div>${pv.pts.length > 1 ? `<div class="lbl" data-a="pf" data-f="" style="margin-top:6px">Previsto ${brl(pv.fim)} após o que está agendado ${ic('right')}</div>` : ''}</div></div>
   <div class="dois">
    <div class="mini" data-a="tab" data-t="mais"><div class="cab"><div style="display:flex">${nomes.slice(0, 3).map(k => banco(k)).join('')}</div><span class="ch">${ic('right')}</span></div>
      <div><div class="s">Saldo em contas</div><div class="v">${brl(x.total)}</div><div class="s">${nomes.length} ${nomes.length === 1 ? 'conta' : 'contas'}</div></div></div>
    <div class="mini" data-a="tab" data-t="mes"><div class="cab">${barras(mr.cat, mr.s)}<span class="ch">${ic('right')}</span></div>
      <div><div class="s">Gastos • ${nomeMes(isoHoje().slice(0, 7))}</div><div class="v">${brl(mr.s)}</div><div class="s">${ncat} ${ncat === 1 ? 'categoria' : 'categorias'}</div></div></div>
   </div>
+  ${cartaoPrevisto()}
   <div class="quick"><input id="qt" placeholder="25 mercado  ·  +50 mãe pix  ·  300 tv 10x" autocomplete="off" enterkeyhint="send">
     <button class="scan" data-a="novo" data-s="1" aria-label="Ler comprovante">${ic('scan')}</button><button class="go" data-a="qenviar" aria-label="Lançar">${ic('send')}</button></div>
   <div class="card" data-a="tab" data-t="mes"><div class="lbl">Gastos em ${nomeMes(isoHoje().slice(0, 7))}</div><div class="big" style="font-size:28px;margin-top:4px">${brl(mr.s)}</div>${mapaDias(isoHoje().slice(0, 7), mr.dia)}</div>
