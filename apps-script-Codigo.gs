@@ -16,14 +16,17 @@ const SEGREDO_WEBHOOK = PROP_('SEGREDO_WEBHOOK');
 const CARTEIRA_PADRAO = PROP_('CARTEIRA_PADRAO') || 'Pix';
 
 const TZ = 'America/Fortaleza';
-const CATEGORIAS = ['Mercado','Comida','Transporte','Casa','Lazer','Saúde','Contas','Outros'];
+const CATEGORIAS = ['Mercado','Comida','Transporte','Casa','Lazer','Saúde','Contas','Eletrônicos','Roupas','Educação','Outros'];
 const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'Transporte',onibus:'Transporte',
   gasolina:'Transporte',combustivel:'Transporte',ifood:'Comida',lanche:'Comida',almoco:'Comida',jantar:'Comida',
   padaria:'Comida',aluguel:'Casa',luz:'Contas',agua:'Contas',internet:'Contas',netflix:'Contas',farmacia:'Saúde',
-  remedio:'Saúde',cinema:'Lazer',bar:'Lazer',salario:'Receita',freela:'Receita'};
+  remedio:'Saúde',cinema:'Lazer',bar:'Lazer',salario:'Receita',freela:'Receita',
+  kindle:'Eletrônicos',fone:'Eletrônicos',celular:'Eletrônicos',notebook:'Eletrônicos',tv:'Eletrônicos',tablet:'Eletrônicos',
+  mouse:'Eletrônicos',teclado:'Eletrônicos',monitor:'Eletrônicos',carregador:'Eletrônicos',camisa:'Roupas',tenis:'Roupas',
+  calca:'Roupas',vestido:'Roupas',curso:'Educação',livro:'Educação',faculdade:'Educação',escola:'Educação'};
 // colunas: 0 id | 1 data | 2 tipo | 3 valor | 4 categoria | 5 descricao | 6 carteira | 7 destino | 8 grupo
-//          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto
-const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto'];
+//          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem
+const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem'];
 const NC = H.length;
 
 /* ---------- INSTALAÇÃO ---------- */
@@ -84,6 +87,7 @@ function lanc_() {
     s.getRange(1, 1, 1, NC).setValues([H]);
     s.getRange('N:N').setNumberFormat('@');
     s.getRange('O:O').setNumberFormat('0');
+    s.getRange('P:P').setNumberFormat('@');
   }
   return s;
 }
@@ -121,7 +125,7 @@ function somaMes_(iso, k) {
 function rows_() {
   const s = lanc_(), n = s.getLastRow();
   if (n < 2) return [];
-  return s.getRange(2, 1, n - 1, NC).getValues().map(r => { r[0] = S_(r[0]); r[1] = d_(r[1]); r[8] = S_(r[8]); r[13] = S_(r[13]); return r; });
+  return s.getRange(2, 1, n - 1, NC).getValues().map(r => { r[0] = S_(r[0]); r[1] = d_(r[1]); r[8] = S_(r[8]); r[13] = S_(r[13]); r[15] = S_(r[15]); return r; });
 }
 function tabela_(nome, cols) {
   const s = sh_(nome), n = s.getLastRow();
@@ -161,7 +165,7 @@ function gravar_(list) {
     const ids = new Set(n < 2 ? [] : s.getRange(2, 1, n - 1, 1).getValues().flat().map(S_));
     const now = Date.now();
     const novos = list.filter(e => !ids.has(S_(e.id))).map(e => [e.id, e.data, e.tipo, e.valor, e.categoria || 'Outros',
-      e.descricao || '', e.carteira, e.destino || '', e.grupo || '', e.n || '', e.total || '', now, 0, e.comprovante || '', e.previsto ? 1 : 0]);
+      e.descricao || '', e.carteira, e.destino || '', e.grupo || '', e.n || '', e.total || '', now, 0, e.comprovante || '', e.previsto ? 1 : 0, e.imagem || '']);
     if (novos.length) {
       const falta = n + novos.length - s.getMaxRows();
       if (falta > 0) s.insertRowsAfter(s.getMaxRows(), falta + 200);
@@ -171,6 +175,7 @@ function gravar_(list) {
       s.getRange(n + 1, 4, novos.length, 1).setNumberFormat('0.00');   // ...menos o valor
       s.getRange(n + 1, 10, novos.length, 4).setNumberFormat('0');      // n, total, atualizado, excluido
       s.getRange(n + 1, 15, novos.length, 1).setNumberFormat('0');     // previsto
+      s.getRange(n + 1, 16, novos.length, 1).setNumberFormat('@');     // imagem (URL)
     }
     return novos.length;
   });
@@ -183,7 +188,7 @@ function mudar_(pred, fn) {
     const r = s.getRange(2, 1, n - 1, NC), v = r.getValues();
     let c = 0; const now = Date.now();
     v.forEach(x => {
-      x[0] = S_(x[0]); x[1] = d_(x[1]); x[8] = S_(x[8]); x[13] = S_(x[13]);
+      x[0] = S_(x[0]); x[1] = d_(x[1]); x[8] = S_(x[8]); x[13] = S_(x[13]); x[15] = S_(x[15]);
       if (pred(x)) { fn(x); x[11] = now; c++; }
     });
     if (c) r.setValues(v);
@@ -197,9 +202,20 @@ function criar_(o) {
   const data = o.data || hoje_(), cart = o.carteira || CARTEIRA_PADRAO, valor = Math.round(Number(o.valor) * 100) / 100;
   if (!(valor > 0) || !o.id) throw new Error('valor/id inválido');
   const base = { tipo: o.tipo, categoria: o.categoria, descricao: o.descricao, carteira: cart, destino: o.destino,
-    comprovante: o.comprovante, previsto: o.previsto ? 1 : 0 };
+    comprovante: o.comprovante, previsto: o.previsto ? 1 : 0, imagem: S_(o.imagem).slice(0, 500) };
   const n = Number(o.n) || 1, lista = [];
-  if (o.tipo === 'S' && n > 1) {
+  const pa = Math.floor(Number(o.pAtual) || 0);
+  if (o.tipo === 'S' && n > 1 && pa >= 1 && pa <= n) {
+    // "3 de 10": valor = de CADA parcela; a atual (pa) cai hoje, as seguintes viram previstos no dia do vencimento
+    const dia = Math.min(Math.max(Math.floor(Number(o.dia)) || Number(hoje_().slice(8)), 1), 31), h = hoje_();
+    const ref = h.slice(0, 8) + String(dia).padStart(2, '0');          // vencimento deste mês
+    const prim = o.previsto ? proxDia_(dia) : ref;
+    for (let k = pa; k <= n; k++) {
+      const atual = k === pa && !o.previsto;
+      lista.push(Object.assign({}, base, { id: o.id + '-' + k, data: atual ? (o.data || h) : somaMes_(prim, k - pa),
+        valor: valor, grupo: o.id, n: k, total: n, previsto: atual ? 0 : 1 }));
+    }
+  } else if (o.tipo === 'S' && n > 1) {
     const p = Math.round(valor / n * 100) / 100;
     for (let i = 0; i < n; i++)
       lista.push(Object.assign({}, base, { id: o.id + '-' + i, data: somaMes_(data, i),
@@ -212,7 +228,7 @@ function adiantar_(desc, qtd) {
     const s = lanc_(), N = s.getLastRow();
     if (N < 2) return { c: 0 };
     const r = s.getRange(2, 1, N - 1, NC), v = r.getValues(), h = hoje_(), q = S_(desc).toLowerCase();
-    v.forEach(x => { x[0] = S_(x[0]); x[1] = d_(x[1]); x[8] = S_(x[8]); x[13] = S_(x[13]); });
+    v.forEach(x => { x[0] = S_(x[0]); x[1] = d_(x[1]); x[8] = S_(x[8]); x[13] = S_(x[13]); x[15] = S_(x[15]); });
     const cand = v.filter(x => x[12] != 1 && x[8] && x[2] === 'S' && x[1] > h && S_(x[5]).toLowerCase().includes(q));
     if (!cand.length) return { c: 0 };
     const g = cand[0][8];
@@ -282,13 +298,26 @@ function parse_(txt) {
     return v && a && b && a !== b ? { tipo: 'T', valor: v, carteira: a, destino: b } : null;
   }
   const p = { tipo: 'S', valor: null, n: 1, carteira: CARTEIRA_PADRAO, descricao: '' }, desc = [];
-  tk.forEach(w => {
+  let pc = null;
+  const tx = ' ' + tk.join(' ') + ' ';
+  let m1 = tx.match(/ (\d{1,2}) ?de ?(\d{1,2}) /i) || tx.match(/ (\d{1,2})\/(\d{1,2}) /);
+  if (m1 && Number(m1[2]) >= 2 && Number(m1[2]) <= 60 && Number(m1[1]) >= 1 && Number(m1[1]) <= Number(m1[2])) pc = m1;
+  if (pc) { p.pAtual = Number(pc[1]); p.n = Number(pc[2]); }
+  let tk2 = tk;
+  if (pc) {
+    const t2 = tx.replace(pc[0], ' ').trim();
+    tk2 = t2 ? t2.split(' ') : [];
+  }
+  const md = (' ' + tk2.join(' ') + ' ').match(/ dia (\d{1,2}) /i);
+  if (md) { p.dia = Number(md[1]); tk2 = (' ' + tk2.join(' ') + ' ').replace(md[0], ' ').trim().split(' '); }
+  tk2.forEach(w => {
     if (p.valor === null && /^\+?[\d.,]*\d[\d.,]*$/.test(w)) { p.valor = numero_(w); if (w[0] === '+') p.tipo = 'E'; }
-    else if (/^\d{1,2}x$/i.test(w)) p.n = parseInt(w);
+    else if (!pc && /^\d{1,2}x$/i.test(w)) p.n = parseInt(w);
     else if (acha(w)) p.carteira = acha(w);
     else desc.push(w);
   });
   p.descricao = desc.join(' ');
+  if (!pc) delete p.pAtual;
   return p.valor > 0 ? p : null;
 }
 // "hoje", "ontem", "28/10", "28/10/26", "28/10/2026" -> yyyy-MM-dd (ou null)
@@ -314,11 +343,14 @@ function proxDia_(d) {
 // "+500 dia 10 salario" | "300 luz 15/11" | "+200 freela" (sem data = hoje)
 function parsePrev_(rest) {
   let t = ' ' + S_(rest).replace(/\s+/g, ' ') + ' ', data = null, m;
-  if ((m = t.match(/ dia (\d{1,2}) /i))) { data = proxDia_(Number(m[1])); t = t.replace(m[0], ' '); }
-  else if ((m = t.match(/ (\d{1,2}\/\d{1,2}(?:\/\d{2,4})?) /))) { data = dataTxt_(m[1]); t = t.replace(m[0], ' '); }
+  if ((m = t.match(/ dia (\d{1,2}) /i))) {
+    const parc = /( \d{1,2}\/\d{1,2} | \d{1,2} ?de ?\d{1,2} )/i.test(t);
+    if (parc) { const q = parse_(t.trim()); if (!q || q.tipo === 'T') return null; q.previsto = 1; return q; }
+    data = proxDia_(Number(m[1])); t = t.replace(m[0], ' ');
+  } else if ((m = t.match(/ (\d{1,2}\/\d{1,2}(?:\/\d{2,4})?) /))) { data = dataTxt_(m[1]); t = t.replace(m[0], ' '); }
   const p = parse_(t.trim());
   if (!p || p.tipo === 'T') return null;
-  p.data = data || hoje_(); p.n = 1;
+  p.data = data || hoje_(); if (!p.pAtual) p.n = 1; p.previsto = 1;
   return p;
 }
 
@@ -407,7 +439,7 @@ const teclado_ = () => ({ keyboard: [
 const menu_ = () => ({ inline_keyboard: [[{ text: '💰 Quanto tenho', callback_data: 'k|q' }, { text: '📅 Parcelas', callback_data: 'k|p' }], [{ text: '📊 Mês', callback_data: 'k|m' }, { text: '↩️ Desfazer', callback_data: 'k|d' }]] });
 function botoes_(tok, cats) {
   const k = [];
-  if (cats) { const b = CATEGORIAS.map((c, i) => ({ text: c, callback_data: 'c|' + tok + '|' + i })); k.push(b.slice(0, 4), b.slice(4)); }
+  if (cats) { const b = CATEGORIAS.map((c, i) => ({ text: c, callback_data: 'c|' + tok + '|' + i })); for (let i = 0; i < b.length; i += 4) k.push(b.slice(i, i + 4)); }
   k.push([{ text: '↩️ Desfazer', callback_data: 'u|' + tok }, { text: '🏷 Categoria', callback_data: 'm|' + tok }]);
   return { inline_keyboard: k };
 }
@@ -564,9 +596,9 @@ function registrar_(chat, p, comp, id) {
   let cat = p.categoria || categoriaPara_(p.descricao); const desconhecida = !cat;
   if (!cat) cat = p.tipo === 'E' ? 'Receita' : 'Outros';
   id = id || uid_();
-  criar_({ id: id, tipo: p.tipo, valor: p.valor, carteira: p.carteira, categoria: cat, descricao: p.descricao, n: p.n, data: p.data, comprovante: comp });
+  criar_({ id: id, tipo: p.tipo, valor: p.valor, carteira: p.carteira, categoria: cat, descricao: p.descricao, n: p.n, data: p.data, comprovante: comp, pAtual: p.pAtual, dia: p.dia, previsto: p.previsto });
   const sd = saldos_();
-  let t = (p.tipo === 'E' ? '🟢 Entrada ' : '🔴 Saída ') + '<b>' + R_(p.valor) + '</b>' + (p.n > 1 ? ' em ' + p.n + 'x de ' + R_(p.valor / p.n) : '') +
+  let t = (p.tipo === 'E' ? '🟢 Entrada ' : '🔴 Saída ') + '<b>' + R_(p.valor) + '</b>' + (p.pAtual ? ' · parcela ' + p.pAtual + '/' + p.n + (p.pAtual < p.n ? ' · faltam ' + (p.n - p.pAtual) + ' (avisos no dia ' + (p.dia || hoje_().slice(8)) + ')' : ' · última!') : p.n > 1 ? ' em ' + p.n + 'x de ' + R_(p.valor / p.n) : '') +
     '\n' + esc_(p.descricao || '—') + ' · ' + cat + ' · ' + p.carteira + (p.data && p.data !== hoje_() ? ' · ' + dt_(p.data) : '') +
     '\n💰 ' + p.carteira + ': ' + R_(sd.s[p.carteira] || 0) + ' | Total: ' + R_(sd.total) + (comp ? '\n📎 Comprovante salvo' : '');
   const lim = orc_().find(o => o.categoria === cat);
@@ -622,7 +654,7 @@ function previsto_(chat, rest) {
   const p = parsePrev_(rest);
   if (!p) return msg_(chat, 'Não entendi 🤔 Exemplos:\n<code>previsto +500 dia 10 salario</code>\n<code>previsto 300 luz 15/11</code>');
   const id = uid_();
-  criar_({ id: id, tipo: p.tipo, valor: p.valor, carteira: p.carteira, data: p.data, previsto: 1,
+  criar_({ id: id, tipo: p.tipo, valor: p.valor, carteira: p.carteira, data: p.data, previsto: 1, n: p.n, pAtual: p.pAtual, dia: p.dia,
     categoria: categoriaPara_(p.descricao) || (p.tipo === 'E' ? 'Receita' : 'Outros'), descricao: p.descricao });
   const sd = saldos_();
   msg_(chat, '🔮 Previsto: ' + (p.tipo === 'E' ? '🟢 ' : '🔴 ') + '<b>' + R_(p.valor) + '</b> · ' + esc_(p.descricao || '—') + ' · ' + p.carteira +
@@ -753,9 +785,9 @@ function parcelas_(chat) {
   const h = hoje_(), g = {};
   rows_().forEach(r => {
     if (r[12] == 1 || !r[8] || r[2] !== 'S') return;
-    const x = g[r[8]] = g[r[8]] || { d: r[5] || r[4], n: Number(r[10]) || 0, tot: 0, pag: 0, fal: 0, vf: 0, prox: '', fim: '', val: Number(r[3]) };
-    x.tot += Number(r[3]);
-    if (r[1] <= h) x.pag++;
+    const x = g[r[8]] = g[r[8]] || { d: r[5] || r[4], n: Number(r[10]) || 0, tot: 0, pag: 0, fal: 0, vf: 0, prox: '', fim: '', val: Number(r[3]), min: 999 };
+    x.tot += Number(r[3]); x.min = Math.min(x.min, Number(r[9]) || 1);
+    if (!prev_(r) && r[1] <= h) x.pag++;
     else { x.fal++; x.vf += Number(r[3]); if (!x.prox || r[1] < x.prox) x.prox = r[1]; }
     if (r[1] > x.fim) x.fim = r[1];
   });
@@ -763,7 +795,7 @@ function parcelas_(chat) {
   if (!ks.length) return msg_(chat, 'Nenhuma parcela pendente 🎉', menu_());
   let falta = 0, t = '📅 <b>Parcelamentos</b>\n';
   ks.forEach(k => {
-    const x = g[k]; falta += x.vf;
+    const x = g[k]; falta += x.vf; x.pag += x.min - 1;
     t += '\n<b>' + esc_(x.d) + '</b> · ' + x.n + 'x de ' + R_(x.val) + ' (total ' + R_(x.tot) + ')\n' +
          '   pagas ' + x.pag + '/' + x.n + ' · faltam ' + x.fal + ' = ' + R_(x.vf) + '\n' +
          '   próxima ' + dt_(x.prox) + ' · termina ' + dt_(x.fim) + '\n';
@@ -790,6 +822,15 @@ function recorrentes_() {
 }
 
 /* ---------- API PARA A HTML ---------- */
+// Previstos que vencem hoje, amanhã ou já passaram sem confirmar (usado pelos avisos do app)
+function agenda_() {
+  const h = hoje_(), am = new Date(Date.parse(h + 'T12:00:00Z') + 864e5).toISOString().slice(0, 10);
+  const L = rows_().filter(r => r[12] != 1 && prev_(r) && r[1] <= am).sort((a, b) => a[1].localeCompare(b[1]))
+    .map(r => ({ id: r[0], data: r[1], tipo: r[2], valor: Number(r[3]), descricao: r[5] || r[4], n: r[9] || '', total: r[10] || '',
+      quando: r[1] < h ? 'atrasado' : r[1] === h ? 'hoje' : 'amanha' }));
+  return { ok: 1, hoje: h, itens: L };
+}
+
 function sync_(desde) {
   const agora = Date.now();
   return { agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_() };
@@ -797,6 +838,7 @@ function sync_(desde) {
 function api_(b) {
   if (b.acao === 'sync') return sync_(Number(b.desde || 0));
   if (b.acao === 'resumo') { const x = saldos_(); return { ok: 1, saldos: x.s, total: x.total, pS: x.pS, pE: x.pE, liquido: x.total - x.pS }; }
+  if (b.acao === 'agenda') return agenda_();
   if (b.acao === 'texto') return texto_api_(b.texto, b.id);          // "Addit": mesma sintaxe do bot
   if (b.acao === 'comp') return comp_api_(b);                          // foto/print em base64 -> Drive + leitura
   if (b.acao === 'ops') {
@@ -805,7 +847,7 @@ function api_(b) {
         if (o.op === 'add') criar_(o);
         else if (o.op === 'del') mudar_(casa_(o.id), x => x[12] = 1);
         else if (o.op === 'cat') mudar_(casa_(o.id), x => x[4] = o.categoria);
-        else if (o.op === 'edit') mudar_(x => x[0] === S_(o.id), x => { x[1] = o.data || x[1]; x[3] = o.valor || x[3]; x[4] = o.categoria || x[4]; x[5] = o.descricao != null ? o.descricao : x[5]; x[6] = o.carteira || x[6]; if (o.previsto != null) x[14] = o.previsto ? 1 : 0; });
+        else if (o.op === 'edit') mudar_(x => x[0] === S_(o.id), x => { x[1] = o.data || x[1]; x[3] = o.valor || x[3]; x[4] = o.categoria || x[4]; x[5] = o.descricao != null ? o.descricao : x[5]; x[6] = o.carteira || x[6]; if (o.previsto != null) x[14] = o.previsto ? 1 : 0; if (o.imagem != null) x[15] = S_(o.imagem).slice(0, 500); });
         else if (o.op === 'anexar') mudar_(so_(o.id), x => x[13] = S_(o.url));
         else if (o.op === 'receber')mudar_(x => x[0] === S_(o.id) && prev_(x), x => { x[14] = 0; x[1] = o.data || hoje_(); if (o.valor) x[3] = o.valor; });
         else if (o.op === 'adiantar') adiantar_(o.descricao, o.qtd);
@@ -821,18 +863,31 @@ function api_(b) {
 
 // Lança a partir de texto (ex.: "25 mercado", "+50 mae pix", "300 tv 10x", "t 100 pix din") e devolve o resumo
 function texto_api_(texto, idIn) {
-  const p = parse_(S_(texto));
+  const T = S_(texto), id = S_(idIn) || uid_();
+  const rc = T.match(/^(?:recebi|paguei)\s+(.+)$/i);
+  if (rc) {
+    let v = null; const q = [];
+    rc[1].split(/\s+/).forEach(w => { if (/^[\d.,]*\d$/.test(w)) v = numero_(w); else q.push(w); });
+    const al = norm_(q.join(' '));
+    const c = rows_().filter(r => r[12] != 1 && prev_(r) && (!al || norm_(r[5]).includes(al))).sort((a, b) => a[1].localeCompare(b[1]))[0];
+    if (!c) return { erro: 'Não achei previsto "' + rc[1] + '"' };
+    mudar_(x => x[0] === c[0] && prev_(x), x => { x[14] = 0; x[1] = hoje_(); if (v > 0) x[3] = Math.round(v * 100) / 100; });
+    const xs = saldos_();
+    return { ok: 1, id: c[0], tipo: c[2], valor: v || Number(c[3]), categoria: c[4], descricao: c[5], carteira: c[6], n: 1, saldos: xs.s, total: xs.total,
+      resumo: (c[2] === 'E' ? 'Recebido ' : 'Pago ') + R_(v || Number(c[3])) + ' · ' + (c[5] || c[4]) };
+  }
+  const pv = T.match(/^prev(?:isto)?\s+(.+)$/i);
+  const p = pv ? parsePrev_(pv[1]) : parse_(T);
   if (!p) return { erro: 'Não entendi. Exemplo: 25 mercado' };
-  const id = S_(idIn) || uid_();
   if (p.tipo === 'T') criar_({ id: id, tipo: 'T', valor: p.valor, carteira: p.carteira, destino: p.destino, categoria: 'Transferência', descricao: 'Transf.' });
   else {
     const cat = categoriaPara_(p.descricao) || (p.tipo === 'E' ? 'Receita' : 'Outros');
-    criar_({ id: id, tipo: p.tipo, valor: p.valor, carteira: p.carteira, categoria: cat, descricao: p.descricao, n: p.n });
+    criar_({ id: id, tipo: p.tipo, valor: p.valor, carteira: p.carteira, categoria: cat, descricao: p.descricao, n: p.n, data: pv ? p.data : undefined, previsto: pv ? 1 : (p.previsto ? 1 : 0), pAtual: p.pAtual, dia: p.dia });
     p.categoria = cat;
   }
   const x = saldos_();
   return { ok: 1, id: id, tipo: p.tipo, valor: p.valor, categoria: p.categoria || 'Transferência', descricao: p.descricao || '', carteira: p.carteira,
-    n: p.n || 1, saldos: x.s, total: x.total, resumo: (p.tipo === 'E' ? 'Entrada ' : p.tipo === 'T' ? 'Transf. ' : 'Saída ') + R_(p.valor) + ' · ' + (p.descricao || p.categoria || '') + ' · ' + p.carteira };
+    n: p.n || 1, saldos: x.s, total: x.total, resumo: (pv ? 'Previsto ' : '') + (p.pAtual ? 'Parcela ' + p.pAtual + '/' + p.n + ' ' : '') + (p.tipo === 'E' ? 'Entrada ' : p.tipo === 'T' ? 'Transf. ' : 'Saída ') + R_(p.valor) + ' · ' + (p.descricao || p.categoria || '') + ' · ' + p.carteira };
 }
 // Recebe {b64, mime}, guarda no Drive e tenta ler o comprovante
 function comp_api_(b) {
