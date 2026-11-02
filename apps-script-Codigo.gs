@@ -28,7 +28,7 @@ const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'T
 //          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem | 16 pagador (vazio = quem registra; 'pai' = pago pelo pai)
 const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem','pagador'];
 const NC = H.length;
-const VERSAO = 8;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
+const VERSAO = 9;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
 
 /* ---------- INSTALAÇÃO ---------- */
 function instalar() {
@@ -891,7 +891,7 @@ function upsertAba_(nome, h, chaveIdx, row) {
   });
 }
 function sociosFull_() {
-  const s = aba_('Socios', HSO), n = s.getLastRow();
+  const s = sh_('Socios'); if (!s) return []; const n = s.getLastRow();
   if (n < 2) return [];
   return s.getRange(2, 1, n - 1, HSO.length).getValues().filter(r => S_(r[0]) && Number(r[4]) !== 1).map(r => ({ nome: S_(r[0]), url: S_(r[1]), chave: S_(r[2]) }));
 }
@@ -901,19 +901,23 @@ function socioUpsert_(o) {
   const old = sociosFull_().find(x => x.nome === nome) || { url: '', chave: '' };
   upsertAba_('Socios', HSO, 0, [nome, o.del ? old.url : S_(o.url || old.url), o.del ? old.chave : S_(o.chave || old.chave), Date.now(), o.del ? 1 : 0]);
 }
+// ids de todos os repasses (marcadores "rec-..." precisam da lista inteira, não só dos últimos)
+function repIds_() { const s = sh_('Repasses'); if (!s) return new Set(); const n = s.getLastRow(); return new Set(n < 2 ? [] : s.getRange(2, 1, n - 1, 1).getValues().flat().map(S_)); }
 function repasses_() {
-  const s = aba_('Repasses', HRP), n = s.getLastRow();
+  const s = sh_('Repasses'); if (!s) return []; const n = s.getLastRow();
   if (n < 2) return [];
   return s.getRange(2, 1, n - 1, HRP.length).getValues().filter(r => S_(r[0])).slice(-200)
     .map(r => ({ id: S_(r[0]), origem: S_(r[1]), socio: S_(r[2]), valor: Number(r[3]) || 0, vinculo: S_(r[4]), status: S_(r[5]), data: d_(r[6]), msg: S_(r[7]) }));
 }
-function chamar_(s, corpo) {
-  const r = UrlFetchApp.fetch(s.url, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
-    payload: JSON.stringify(Object.assign({ chave: s.chave }, corpo)) });
-  let j; try { j = JSON.parse(r.getContentText()); } catch (e) { throw new Error('o app do sócio não respondeu direito (confira o link)'); }
-  if (j.erro) throw new Error(j.erro);
+// pedido para o Apps Script pessoal de um sócio. "leve" e "desde" no futuro: ele responde só o resultado, sem mandar a planilha inteira de volta
+const pedido_ = (s, corpo) => ({ url: s.url, method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+  payload: JSON.stringify(Object.assign({ chave: s.chave, leve: 1, desde: 9e15 }, corpo)) });
+function lerResp_(r) {
+  let j; try { j = JSON.parse(r.getContentText()); } catch (e) { throw new Error('o app do sócio não respondeu direito (confira o link e se está implantado para "Qualquer pessoa")'); }
+  if (j.erro) throw new Error(j.erro === 'chave inválida' ? 'chave do sócio está errada' : j.erro);
   return j;
 }
+function chamar_(s, corpo) { const p = pedido_(s, corpo); delete p.url; return lerResp_(UrlFetchApp.fetch(s.url, p)); }
 // entradas (não previstas) do mês, para escolher qual já foi lançada como salário
 function entradas_(mes) {
   return rows_().filter(r => r[12] != 1 && r[2] === 'E' && !prev_(r) && r[4] !== 'Ajuste' && S_(r[1]).slice(0, 7) === S_(mes))
@@ -930,7 +934,7 @@ function salarioRecebido_(b) {
   const so = sociosFull_().find(x => x.nome.toLowerCase() === nome.toLowerCase());
   if (!so) throw new Error('"' + nome + '" não está cadastrado como sócio na empresa');
   const mid = 'rec-' + ref;
-  if (repasses_().some(x => x.id === mid)) return { ok: 1, ja: 1 };
+  if (repIds_().has(mid)) return { ok: 1, ja: 1 };
   const valor = Math.round(Number(b.valor) * 100) / 100, data = b.data || hoje_(), desc = 'Salário - ' + so.nome;
   if (!(valor > 0)) throw new Error('valor inválido');
   const pr = rows_().find(r => r[12] != 1 && r[2] === 'S' && r[4] === 'Salário' && prev_(r) && S_(r[5]).toLowerCase() === desc.toLowerCase());
@@ -943,25 +947,25 @@ function salarioRecebido_(b) {
 // divide uma entrada da empresa: lança a saída "Salário" aqui e a entrada (ou ajusta a já lançada) no app de cada sócio. Idempotente.
 function distribuir_(b) {
   const id = S_(b.id); if (!id) throw new Error('distribuição sem id');
-  const data = b.data || hoje_(), cart = b.carteira || CARTEIRA_PADRAO, lista = sociosFull_(), out = [];
+  const data = b.data || hoje_(), cart = b.carteira || CARTEIRA_PADRAO, lista = sociosFull_(), marc = repIds_(), itens = [];
   (b.partes || []).forEach((p, i) => {
     const valor = Math.round(Number(p.valor) * 100) / 100, nome = S_(p.socio); if (!(valor > 0) || !nome) return;
     const rid = id + '-' + i, s = lista.find(x => x.nome === nome), vinc = S_(p.vinculo);
-    if (!(vinc && repasses_().some(x => x.id === 'rec-' + vinc))) criar_({ id: rid, tipo: 'S', valor: valor, carteira: cart, data: data, categoria: 'Salário', descricao: 'Salário - ' + nome });      // se o sócio já avisou que recebeu, a saída já está lançada
-    let st = 'ok', msg = '';
-    if (!s || !s.url || !s.chave) { st = 'erro'; msg = 'sócio sem link/chave'; }
-    else {
-      try {
-        const ops = vinc ? [{ op: 'edit', id: vinc, valor: valor, descricao: 'Salário empresa', categoria: 'Salário' }]
-                         : [{ op: 'add', id: 'emp-' + rid, tipo: 'E', valor: valor, descricao: 'Salário empresa', categoria: 'Salário', data: data }];
-        const j = chamar_(s, { acao: 'ops', ops: ops }), r0 = (j.res || [])[0];
-        if (!r0 || r0.erro) { st = 'erro'; msg = (r0 && r0.erro) || 'resposta inesperada'; }
-      } catch (e) { st = 'erro'; msg = String(e.message).slice(0, 80); }
-    }
-    upsertAba_('Repasses', HRP, 0, [rid, S_(b.origem), nome, valor, vinc, st, data, msg, Date.now()]);
-    out.push({ socio: nome, ok: st === 'ok', erro: msg });
+    if (!(vinc && marc.has('rec-' + vinc))) criar_({ id: rid, tipo: 'S', valor: valor, carteira: cart, data: data, categoria: 'Salário', descricao: 'Salário - ' + nome });      // se o sócio já avisou que recebeu, a saída já está lançada
+    const ops = vinc ? [{ op: 'edit', id: vinc, valor: valor, descricao: 'Salário empresa', categoria: 'Salário' }]
+                     : [{ op: 'add', id: 'emp-' + rid, tipo: 'E', valor: valor, descricao: 'Salário empresa', categoria: 'Salário', data: data }];
+    itens.push({ rid, nome, valor, vinc, s, ops, st: 'ok', msg: '' });
   });
-  return { ok: 1, res: out };
+  const vao = itens.filter(x => x.s && x.s.url && x.s.chave);
+  itens.filter(x => !vao.includes(x)).forEach(x => { x.st = 'erro'; x.msg = 'sócio sem link/chave'; });
+  let resps = [];
+  try { resps = vao.length ? UrlFetchApp.fetchAll(vao.map(x => pedido_(x.s, { acao: 'ops', ops: x.ops }))) : []; }
+  catch (e) { vao.forEach(x => { x.st = 'erro'; x.msg = String(e.message).slice(0, 80); }); }
+  vao.forEach((x, k) => { if (x.st !== 'ok' || !resps[k]) return;
+    try { const r0 = (lerResp_(resps[k]).res || [])[0]; if (!r0 || r0.erro) { x.st = 'erro'; x.msg = (r0 && r0.erro) || 'resposta inesperada'; } }
+    catch (e) { x.st = 'erro'; x.msg = String(e.message).slice(0, 80); } });
+  itens.forEach(x => upsertAba_('Repasses', HRP, 0, [x.rid, S_(b.origem), x.nome, x.valor, x.vinc, x.st, data, x.msg, Date.now()]));
+  return { ok: 1, res: itens.map(x => ({ socio: x.nome, ok: x.st === 'ok', erro: x.msg })) };
 }
 
 /* ---------- API PARA A HTML ---------- */
@@ -1009,7 +1013,7 @@ function api_(b) {
         return { id: o.id || o.nome, ok: 1 };
       } catch (e) { log_(e); return { id: o.id || o.nome, erro: String(e.message) }; }
     });
-    return Object.assign({ res: res }, sync_(Number(b.desde || 0)));
+    return b.leve ? { res: res } : Object.assign({ res: res }, sync_(Number(b.desde || 0)));
   }
   return { erro: 'ação desconhecida' };
 }

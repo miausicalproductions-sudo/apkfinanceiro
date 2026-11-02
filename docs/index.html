@@ -150,6 +150,7 @@ a{color:var(--lima)}
 .pvl{display:flex;flex-direction:column;align-items:center;gap:12px;color:white;font-size:26px;font-weight:700;letter-spacing:-.03em}.pva{width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.3);background-size:cover;background-position:center;border:3px solid rgba(255,255,255,.8)}
 @media (prefers-reduced-motion:reduce){.pbub.flip,.pbub.sync:after{animation:none}}
 .fileoc{position:relative;overflow:hidden}.fileoc input{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:100px;cursor:pointer}
+.toast .spin{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--line2);border-top-color:var(--lima);display:block;flex:none;animation:pspin .8s linear infinite}
 
 /* ===== tema pastel (versão iPhone) ===== */
 body{background:var(--bg)}
@@ -268,7 +269,7 @@ async function trocarPerfil(p, irAjustes) {
     for (let i = 0; i < 3 && enviando; i++) await espera(100);      // dá um instante para o envio em andamento terminar; se não terminar, ele é abandonado (reenvia depois, sem duplicar)
     GEN++; enviando = false; refazer = false;
     if (!calmo) await espera(Math.max(0, 330 - (Date.now() - t0)));
-    EMP = novo; VNEED = Math.max(VSERV, EMP ? 8 : 0); if (EMP) EMPON = true;
+    EMP = novo; VNEED = Math.max(VSERV, EMP ? 9 : 0); if (EMP) EMPON = true;
     try { localStorage.setItem('fin_perfil', EMP ? 'emp' : ''); if (EMP) localStorage.setItem('fin_emp', '1'); } catch (e) {}
     Object.assign(S, {cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], socios: [], repasses: [], desde: 0, fila: [], srvVer: null, pf: '', todos: false, tab: irAjustes ? 'mais' : 'home', rede: null, mes: isoHoje().slice(0, 7)});
     carregarLocal(); reaplicar(); render(); document.querySelectorAll('.pmenu').forEach(x => x.remove());
@@ -485,8 +486,9 @@ async function fazer(ops, ok) {
   render(); agendar(); return true;
 }
 let tt;
-function aviso(t, c) { clearTimeout(tt); $('#layer').querySelectorAll('.toast').forEach(x => x.remove()); const d = document.createElement('div'); d.className = 'toast ' + (c || '');
-  d.innerHTML = (c === 'good' ? ic('check') : c === 'bad' ? ic('alert') : ic('wifi')) + '<span></span>'; d.querySelector('span').textContent = t; $('#layer').appendChild(d); tt = setTimeout(() => d.remove(), 3200); }
+function aviso(t, c, ms) { clearTimeout(tt); $('#layer').querySelectorAll('.toast').forEach(x => x.remove()); const d = document.createElement('div'); d.className = 'toast ' + (c || '');
+  d.innerHTML = (c === 'good' ? ic('check') : c === 'bad' ? ic('alert') : c === 'load' ? '<i class="spin"></i>' : ic('wifi')) + '<span></span>'; d.querySelector('span').textContent = t; $('#layer').appendChild(d);
+  if (ms !== 0) tt = setTimeout(() => d.remove(), ms || (c === 'bad' ? 5000 : 3200)); }
 
 /* ============ foto e categoria do produto ============ */
 const IMGC = (() => { try { return JSON.parse(localStorage.getItem('fin_img') || '{}'); } catch (e) { return {}; } })(), semFoto = {};
@@ -817,7 +819,7 @@ const PAGN = {eu: 'Eu', pai: 'Pai'};
 let EMP = (() => { try { return localStorage.getItem('fin_perfil') === 'emp'; } catch (e) { return false; } })();
 let EMPON = (() => { try { return EMP || localStorage.getItem('fin_emp') === '1'; } catch (e) { return false; } })();
 const KP = k => EMP ? 'e_' + k : k;
-let VNEED = Math.max(VSERV, EMP ? 8 : 0);
+let VNEED = Math.max(VSERV, EMP ? 9 : 0);
 const avisoServ = () => S.srvVer !== null && S.srvVer < VNEED ? `<div class="card" style="border-color:#f7b6c4"><b style="color:var(--verm)">${ic('alert')} O código do Apps Script está desatualizado</b><div class="mut" style="font-size:13.5px;margin:6px 0 10px">Sem atualizar, parcelas, metas e previstos ficam errados na planilha. Abra o código novo, copie tudo, cole no Apps Script no lugar do antigo e crie uma nova versão em Implantar > Gerenciar implantações > editar. Depois rode a função <b style="color:var(--tx)">atualizar</b> uma vez.</div><a class="btn pri full" href="https://raw.githubusercontent.com/miausicalproductions-sudo/apkfinanceiro/main/apps-script-Codigo.gs" target="_blank" rel="noopener">Abrir o código novo</a></div>` : '';
 function telaHome() {
   const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7)), pv = projecao();
@@ -1090,14 +1092,12 @@ function abrirNovo(prev, scan) {
   const salUi = () => { const on = EMP && form.tipo === 'S' && $('#fcat').value === 'Salário'; form.sal = on; $('#gsal').style.display = on ? '' : 'none';
     ['#gn', '#grep', '#gcomp', '.quemsel', '#gpar'].forEach(q => { const e = $(q); if (e) e.style.display = on ? 'none' : (q === '#gn' ? (form.tipo === 'S' ? '' : 'none') : q === '#gpar' ? 'none' : ''); }); };
   $('#fcat').addEventListener('change', () => { form.catTocada = true; salUi(); });
-  $('#fsoc').addEventListener('change', async () => { const nome = $('#fsoc').value, sel = $('#fvin'); sel.innerHTML = '<option value="">Criar nova</option>'; if (!nome) return;
+  $('#fsoc').addEventListener('change', async () => { const nome = $('#fsoc').value, sel = $('#fvin'); sel.innerHTML = '<option value="">Criar nova</option>'; sel.disabled = false; if (!nome) return;
     const x = S.socios.find(z => z.nome === nome); if (!x || !x.ok) { $('#fsh').textContent = nome + ' ainda está sem link/chave (Ajustes, Sócios).'; return; }
-    try { const j = await api({acao: 'candidatos', socio: nome, mes: ($('#fdt').value || isoHoje()).slice(0, 7)}); if ($('#fsoc').value !== nome) return; const it = j.itens || [];
-      const mk = c => { const o = document.createElement('option'); o.value = c.id; o.textContent = dt(c.data).slice(0, 5) + ' • ' + c.desc + ' • ' + brl(c.valor); return o; };
-      const sal = it.filter(c => c.cat === 'Salário'), out = it.filter(c => c.cat !== 'Salário'); sal.forEach(c => sel.appendChild(mk(c)));
-      if (out.length) { const g = document.createElement('optgroup'); g.label = sal.length ? 'Outras entradas' : 'Sem categoria Salário: outras entradas'; out.forEach(c => g.appendChild(mk(c))); sel.appendChild(g); }
-      $('#fsh').textContent = sal.length ? 'Se já lançou o salário dele(a) neste mês, escolha acima para não duplicar.' : 'Nenhuma entrada com categoria Salário neste mês. Se já lançou, escolha acima (ou crie nova).';
-    } catch (e) { $('#fsh').textContent = 'Não consegui ver as entradas de ' + nome + ' (' + e.message + '). Vai criar uma entrada nova.'; } });
+    carregando(sel); $('#fsh').textContent = 'Buscando as entradas de ' + nome + '…';
+    try { const it = await candidatos(nome, ($('#fdt').value || isoHoje()).slice(0, 7)); if ($('#fsoc') !== null && $('#fsoc').value !== nome) return; const ns = encherVinculo(sel, it);
+      $('#fsh').textContent = ns ? 'Se o salário já foi lançado no app dele(a), deixe escolhido acima para não duplicar.' : 'Nenhuma entrada com categoria Salário neste mês. Se já lançou, escolha acima (ou crie nova).';
+    } catch (e) { sel.disabled = false; sel.innerHTML = '<option value="">Criar nova</option>'; $('#fsh').textContent = 'Não consegui ver as entradas de ' + nome + ' (' + e.message + '). Vai criar uma entrada nova.'; } });
   $('#svm').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; form.vmode = b.dataset.v; $('#svm').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); pv(); });
   let tb; $('#fd').addEventListener('input', () => { clearTimeout(tb); form.img = ''; $('#fprod').innerHTML = ''; tb = setTimeout(async () => {
     if (form.tipo !== 'S') return; const q = $('#fd').value; const r = await buscarProduto(q); if (!r || $('#fd').value !== q || !$('#fprod')) return;
@@ -1123,6 +1123,7 @@ async function salvarNovo() {
   const tipo = form.tipo, cart = $('#fc').value, desc = $('#fd').value.trim(), data = $('#fdt').value || isoHoje();
   if (EMP && tipo === 'S' && $('#fcat').value === 'Salário') {       // salário de sócio: saída na empresa + entrada no app dele(a)
     const nome = $('#fsoc').value; if (!nome) return aviso('Escolha quem recebe o salário.', 'bad');
+    if ($('#fvin').disabled) return aviso('Espere carregar as entradas (para não duplicar).', 'bad');
     const vin = $('#fvin').value || ''; fechar(); return enviarDist(uid(), '', data, cart, [{socio: nome, valor: v, vinculo: vin}]);
   }
   const op = {op: 'add', id: uid(), tipo, valor: v, carteira: cart, data};
@@ -1179,6 +1180,20 @@ function abrirDet(id) {
 }
 const distribuido = id => S.repasses.filter(x => x.origem === id).reduce((a, x) => a + x.valor, 0);
 let distF = {};
+const CAND = {};       // entradas de cada sócio, guardadas por 2 minutos (evita ir e voltar na planilha toda hora)
+async function candidatos(socio, mes) {
+  const k = socio + '|' + mes, c = CAND[k]; if (c && Date.now() - c.t < 120000) return c.itens;
+  const j = await api({acao: 'candidatos', socio, mes}); CAND[k] = {t: Date.now(), itens: j.itens || []}; return CAND[k].itens;
+}
+function encherVinculo(sel, it) {      // Salário primeiro, depois as outras entradas
+  it = it.filter(c => !/^emp-/.test(c.id) && norm(c.desc) !== 'salario empresa');      // o que já veio da empresa não pode ser vinculado de novo (sobrescreveria outro pagamento)
+  sel.innerHTML = '<option value="">Criar nova</option>'; sel.disabled = false;
+  const mk = c => { const o = document.createElement('option'); o.value = c.id; o.textContent = dt(c.data).slice(0, 5) + ' • ' + c.desc + ' • ' + brl(c.valor); return o; };
+  const sal = it.filter(c => c.cat === 'Salário'), out = it.filter(c => c.cat !== 'Salário'); sal.forEach(c => sel.appendChild(mk(c)));
+  if (out.length) { const g = document.createElement('optgroup'); g.label = sal.length ? 'Outras entradas' : 'Sem categoria Salário: outras entradas'; out.forEach(c => g.appendChild(mk(c))); sel.appendChild(g); }
+  return sal.length;
+}
+const carregando = sel => { sel.innerHTML = '<option value="">Buscando as entradas…</option>'; sel.disabled = true; };
 function abrirDistribuir(id) {
   const r = S.linhas[id]; if (!r) return; const livre = Math.max(0, r2(r.valor - distribuido(id)));
   if (!S.socios.length) return aviso('Cadastre os sócios primeiro (Ajustes, Sócios).', 'bad');
@@ -1197,15 +1212,13 @@ function abrirDistribuir(id) {
   document.querySelectorAll('[data-ds]').forEach(e => e.addEventListener('input', () => { tot(); dica(e.dataset.ds); }));
   document.querySelectorAll('[data-dv]').forEach(e => e.addEventListener('change', () => dica(e.dataset.dv)));
   distF.tot = tot; distF.dica = dica;
-  S.socios.forEach(async (x, i) => { if (!x.ok) return; try { const j = await api({acao: 'candidatos', socio: x.nome, mes: distF.mes}); const sel = $(`[data-dv="${i}"]`); if (!sel) return; distF.cand[i] = j.itens || [];
-    const mk = c => { const o = document.createElement('option'); o.value = c.id; o.textContent = dt(c.data).slice(0, 5) + ' • ' + c.desc + ' • ' + brl(c.valor); return o; };
-    const sal = distF.cand[i].filter(c => c.cat === 'Salário'), out = distF.cand[i].filter(c => c.cat !== 'Salário');
-    sal.forEach(c => sel.appendChild(mk(c)));
-    if (out.length) { const g = document.createElement('optgroup'); g.label = sal.length ? 'Outras entradas' : 'Sem categoria Salário: outras entradas'; out.forEach(c => g.appendChild(mk(c))); sel.appendChild(g); }
-    if (!sal.length) { const h = $(`[data-dh="${i}"]`); if (h) h.textContent = 'Nenhuma entrada com categoria Salário neste mês. Se já lançou, mude a categoria dela para Salário (ou escolha abaixo).'; } } catch (e) { const h = $(`[data-dh="${i}"]`); if (h) h.textContent = 'Não consegui ver as entradas de ' + x.nome + ' (' + e.message + '). Vai criar uma entrada nova.'; } });
+  S.socios.forEach(async (x, i) => { const sel = $(`[data-dv="${i}"]`), h = $(`[data-dh="${i}"]`); if (!x.ok || !sel) return; carregando(sel);
+    try { const it = await candidatos(x.nome, distF.mes); if (!sel.isConnected) return; distF.cand[i] = it; const ns = encherVinculo(sel, it); dica(i);
+      if (!ns && h && !h.textContent) h.textContent = 'Nenhuma entrada com categoria Salário de ' + x.nome + ' neste mês.'; }
+    catch (e) { if (!sel.isConnected) return; sel.innerHTML = '<option value="">Criar nova</option>'; sel.disabled = false; if (h) h.textContent = 'Não consegui ver as entradas de ' + x.nome + ' (' + e.message + '). Vai criar uma entrada nova.'; } });
 }
 async function enviarDist(id, origem, data, cart, partes) {
-  aviso('Enviando…');
+  aviso('Enviando para ' + partes.map(x => x.socio).join(' e ') + '…', 'load', 0);
   try { const r = await api({acao: 'distribuir', id, origem, data, carteira: cart, partes, desde: S.desde}); mesclar(r); reaplicar();
     const mau = (r.res || []).filter(x => !x.ok);
     if (mau.length) aviso(mau.map(x => x.socio + ': ' + x.erro).join(' • ') + '. Toque no repasse em Ajustes para tentar de novo.', 'bad'); else aviso('Distribuído: cada um já recebeu na conta pessoal', 'good'); }
@@ -1260,6 +1273,7 @@ async function acao(a, el) {
   else if (a === 'distcalc') { const pc = Math.min(100, Math.max(0, num($('#dres').value) || 0)), n = S.socios.length, parte = Math.floor(distF.livre * (100 - pc) / 100 / n * 100) / 100;
     document.querySelectorAll('[data-ds]').forEach(e => { e.value = parte ? String(parte).replace('.', ',') : ''; }); distF.tot(); S.socios.forEach((x, i) => distF.dica(i)); }
   else if (a === 'okdist') {
+    if (document.querySelector('[data-dv]:disabled')) return aviso('Espere carregar as entradas dos sócios (para não duplicar).', 'bad');
     const partes = S.socios.map((x, i) => ({socio: x.nome, valor: num($(`[data-ds="${i}"]`).value) || 0, vinculo: $(`[data-dv="${i}"]`).value || ''})).filter(x => x.valor > 0);
     if (!partes.length) return aviso('Digite o salário de pelo menos um sócio.', 'bad');
     if (partes.reduce((a, x) => a + x.valor, 0) > distF.livre + .004) return aviso('A soma passa do valor disponível.', 'bad');
@@ -1391,9 +1405,10 @@ async function enviarQuick() {
 }
 document.addEventListener('click', e => { const el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return; acao(el.dataset.a, el); });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'qt') { e.preventDefault(); enviarQuick(); } if (e.key === 'Enter' && e.target.id === 'ar') { const b = document.querySelector('[data-a=okajuste]'); if (b) b.click(); } });
-window.addEventListener('online', () => enviar());
+window.addEventListener('online', () => { enviar(); drenarEmpresa(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) enviar(); });
-setInterval(() => { if (!document.hidden) enviar(); }, 60000);
+setInterval(() => { if (!document.hidden) { enviar(); drenarEmpresa(); } }, 60000);
+setTimeout(() => { try { drenarEmpresa(); } catch (e) {} }, 3000);
 
 /* ============ início ============ */
 // versão para Safari/iPhone: guarda o app para abrir sem internet (no app Android isso não é usado)
