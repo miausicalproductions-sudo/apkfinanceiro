@@ -141,6 +141,8 @@ a{color:var(--lima)}
 .qtag{font-style:normal;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;margin-right:6px;color:#fff}.qtag.eu{background:var(--lima)}.qtag.pai{background:var(--azul)}
 .chipsw{border:0;border-radius:999px;padding:7px 12px;font:inherit;font-weight:600;font-size:12.5px;background:rgba(255,255,255,.14);color:var(--tx);backdrop-filter:blur(8px)}.chipsw.emp{background:var(--azul);color:#fff}
 .dist .f label{font-size:13px}.dist select,.dist input{font-size:15px}.stt{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}.stt.ok{background:var(--lima);color:var(--on)}.stt.er{background:var(--verm);color:#fff}
+.pbub{position:absolute;right:9px;bottom:76px;width:44px;height:44px;border-radius:50%;border:2px solid var(--bg);background:var(--lima);color:var(--on);font:700 17px/1 inherit;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.28);touch-action:manipulation;user-select:none;-webkit-user-select:none}.pbub.emp{background:var(--azul);color:#fff}
+.pmenu{position:fixed;right:14px;bottom:calc(var(--bot) + 134px);z-index:30;background:var(--card2);border:1px solid var(--line2);border-radius:22px;padding:6px;box-shadow:0 14px 40px rgba(0,0,0,.35);min-width:170px}.pmenu button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--tx);font:inherit;font-weight:600;padding:12px 14px;border-radius:16px}.pmenu button.on{background:var(--card)}.pmenu i{width:12px;height:12px;border-radius:50%;display:block}
 </style>
 </head>
 <body>
@@ -215,6 +217,30 @@ const num = t => { let s = String(t).trim().replace(/^R\$\s*/i, ''); const neg =
   const v = parseFloat(s); return isNaN(v) ? null : (neg ? -v : v); };
 const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], socios: [], repasses: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, srvVer: null, pf: '', todos: false, rede: null };
 
+// troca instantânea entre conta pessoal e da empresa (cada uma tem seus dados guardados à parte)
+async function trocarPerfil(p, irAjustes) {
+  const novo = p === 'emp'; if (novo === EMP) return;
+  salvarLocal();
+  for (let i = 0; i < 40 && enviando; i++) await new Promise(r => setTimeout(r, 100));      // deixa terminar o envio em andamento
+  EMP = novo; VNEED = Math.max(VSERV, EMP ? 7 : 0); if (EMP) EMPON = true;
+  try { localStorage.setItem('fin_perfil', EMP ? 'emp' : ''); if (EMP) localStorage.setItem('fin_emp', '1'); } catch (e) {}
+  Object.assign(S, {cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], socios: [], repasses: [], desde: 0, fila: [], srvVer: null, pf: '', todos: false, tab: irAjustes ? 'mais' : 'home', rede: null, mes: isoHoje().slice(0, 7)});
+  carregarLocal(); reaplicar(); render(); document.querySelectorAll('.pmenu').forEach(x => x.remove());
+  aviso(EMP ? 'Conta da empresa' : 'Conta pessoal', 'good');
+  if (!S.cfg.url) { S.tab = 'mais'; render(); if (EMP) aviso('Coloque o link e a chave da empresa em Conexão.', ''); return; }
+  try { await sync(); reaplicar(); S.rede = true; } catch (e) { S.rede = false; }
+  render(); enviar();
+}
+function menuPerfil() {
+  document.querySelectorAll('.pmenu').forEach(x => x.remove()); const m = document.createElement('div'); m.className = 'pmenu';
+  m.innerHTML = `<button class="${EMP ? '' : 'on'}" data-p=""><i style="background:var(--lima)"></i>Pessoal</button><button class="${EMP ? 'on' : ''}" data-p="emp"><i style="background:var(--azul)"></i>Empresa</button>`;
+  m.addEventListener('click', e => { const b = e.target.closest('button'); if (b) trocarPerfil(b.dataset.p); }); $('#layer').appendChild(m);
+  setTimeout(() => document.addEventListener('pointerdown', function f(e) { if (!e.target.closest('.pmenu')) { m.remove(); document.removeEventListener('pointerdown', f); } }), 50);
+}
+(function () { let t = null, longo = false; const d = document.getElementById('dock'); if (!d) return;
+  d.addEventListener('pointerdown', e => { if (!e.target.closest('#pbub')) return; longo = false; clearTimeout(t); t = setTimeout(() => { longo = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch (x) {} menuPerfil(); }, 450); });
+  d.addEventListener('pointerup', e => { clearTimeout(t); if (!e.target.closest('#pbub') || longo) return; trocarPerfil(EMP ? '' : 'emp'); });
+  d.addEventListener('pointercancel', () => clearTimeout(t)); d.addEventListener('contextmenu', e => { if (e.target.closest('#pbub')) e.preventDefault(); }); })();
 function salvarLocal() { try { localStorage.setItem(KP('fin_state'), JSON.stringify({linhas: S.linhas, socios: S.socios, repasses: S.repasses, carteiras: S.carteiras, orc: S.orc, metas: S.metas, rotinas: S.rotinas, desde: S.desde, fila: S.fila})); } catch (e) {} clearTimeout(tAg); tAg = setTimeout(() => { try { gravarAgenda(); } catch (e) {} }, 800); }
 function carregarLocal() {
   try { const c = JSON.parse(localStorage.getItem(KP('fin_cfg')) || '{}'); S.cfg.url = c.url || ''; S.cfg.chave = c.chave || ''; } catch (e) {}
@@ -484,15 +510,15 @@ function quemPagou(ym) {
   o.tot = o.eu + o.pai; return o;
 }
 function cartaoQuem(ym) {
-  if (!PAIS) return '';
+  if (!PAIS || EMP) return '';
   const q = quemPagou(ym), pe = q.tot ? Math.round(q.eu / q.tot * 100) : 0, pp = q.tot ? 100 - pe : 0;
   return `<div class="card quem"><div class="lbl">Quem pagou em ${nomeMes(ym)}</div><div class="big" style="font-size:28px;margin-top:4px">${brl(q.tot)}</div>
    <div class="qbar">${q.tot ? `<i class="eu" style="flex:${q.eu || .001}"></i><i class="pai" style="flex:${q.pai || .001}"></i>` : '<i style="flex:1;background:var(--line2)"></i>'}</div>
    <div class="qdois"><div class="qlado eu" data-a="quemlista" data-q="eu" data-m="${ym}"><div class="qn"><i></i>${PAGN.eu} paguei</div><div class="qv">${brl(q.eu)}</div><div class="qs">${pe}% • ${q.ne} ${q.ne === 1 ? 'gasto' : 'gastos'}</div></div>
    <div class="qlado pai" data-a="quemlista" data-q="pai" data-m="${ym}"><div class="qn"><i></i>${PAGN.pai} pagou</div><div class="qv">${brl(q.pai)}</div><div class="qs">${pp}% • ${q.np} ${q.np === 1 ? 'gasto' : 'gastos'}</div></div></div></div>`;
 }
-const quemSeg = cur => PAIS ? `<div class="f quemsel"><label>Quem pagou?</label><div class="seg" id="sqp"><button class="${cur === 'pai' ? '' : 'on'}" data-v="">${PAGN.eu} paguei</button><button class="${cur === 'pai' ? 'on' : ''}" data-v="pai">${PAGN.pai} pagou</button></div></div>` : '';
-const quemTag = r => PAIS && r.tipo === 'S' ? `<em class="qtag ${r.pag === 'pai' ? 'pai' : 'eu'}">${r.pag === 'pai' ? PAGN.pai : PAGN.eu}</em>` : '';
+const quemSeg = cur => PAIS && !EMP ? `<div class="f quemsel"><label>Quem pagou?</label><div class="seg" id="sqp"><button class="${cur === 'pai' ? '' : 'on'}" data-v="">${PAGN.eu} paguei</button><button class="${cur === 'pai' ? 'on' : ''}" data-v="pai">${PAGN.pai} pagou</button></div></div>` : '';
+const quemTag = r => PAIS && !EMP && r.tipo === 'S' ? `<em class="qtag ${r.pag === 'pai' ? 'pai' : 'eu'}">${r.pag === 'pai' ? PAGN.pai : PAGN.eu}</em>` : '';
 function ultimosMeses(n) { const [y, m] = S.mes.split('-').map(Number), o = [];
   for (let i = n - 1; i >= 0; i--) { const d = new Date(y, m - 1 - i, 1), ym = d.getFullYear() + '-' + pad(d.getMonth() + 1), r = mesResumo(ym); o.push({ym, e: r.e, s: r.s, nome: MESES[d.getMonth()].slice(0, 3)}); }
   return o; }
@@ -710,17 +736,17 @@ const VSERV = 5;
 const PAIS = false;   // versão iPhone da Thaís liga isto (tools/build_pwa.py): campo "quem pagou" (Eu / Pai)
 const PAGN = {eu: 'Eu', pai: 'Pai'};
 // Conta da empresa: mesmo app, outro Apps Script/planilha, estado guardado à parte (prefixo e_)
-const EMP = (() => { try { return localStorage.getItem('fin_perfil') === 'emp'; } catch (e) { return false; } })();
-const EMPON = (() => { try { return EMP || localStorage.getItem('fin_emp') === '1'; } catch (e) { return false; } })();
+let EMP = (() => { try { return localStorage.getItem('fin_perfil') === 'emp'; } catch (e) { return false; } })();
+let EMPON = (() => { try { return EMP || localStorage.getItem('fin_emp') === '1'; } catch (e) { return false; } })();
 const KP = k => EMP ? 'e_' + k : k;
-const VNEED = Math.max(VSERV, EMP ? 7 : 0);
+let VNEED = Math.max(VSERV, EMP ? 7 : 0);
 const avisoServ = () => S.srvVer !== null && S.srvVer < VNEED ? `<div class="card" style="border-color:#5a1f22"><b style="color:var(--verm)">${ic('alert')} O código do Apps Script está desatualizado</b><div class="mut" style="font-size:13.5px;margin:6px 0 10px">Sem atualizar, parcelas, metas e previstos ficam errados na planilha. Abra o código novo, copie tudo, cole no Apps Script no lugar do antigo e crie uma nova versão em Implantar > Gerenciar implantações > editar. Depois rode a função <b style="color:#fff">atualizar</b> uma vez.</div><a class="btn pri full" href="https://raw.githubusercontent.com/miausicalproductions-sudo/apkfinanceiro/main/apps-script-Codigo.gs" target="_blank" rel="noopener">Abrir o código novo</a></div>` : '';
 function telaHome() {
   const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7)), pv = projecao();
   const pos = nomes.reduce((a, k) => a + Math.max(x.s[k], 0), 0) || 1;
   const rec = vivas().filter(r => !r.prev && r.data <= h).sort((a, b) => b.at - a.at);
   const lista = rec.slice(0, S.todos ? 60 : 8), ncat = Object.keys(mr.cat).length;
-  return `<div class="hero"><div class="row1"><div style="display:flex;align-items:center;gap:8px"><div class="logo">${ic('coin')}</div>${EMPON ? `<button class="chipsw ${EMP ? 'emp' : ''}" data-a="perfil" data-p="${EMP ? '' : 'emp'}">${EMP ? 'Empresa' : 'Pessoal'} ⇄ ${EMP ? 'Pessoal' : 'Empresa'}</button>` : ''}</div>
+  return `<div class="hero"><div class="row1"><div style="display:flex;align-items:center;gap:8px"><div class="logo">${ic('coin')}</div></div>
     <div class="pilha">${nomes.slice(0, 3).map(k => banco(k)).join('')}<span class="dot ${S.rede === false || S.fila.length ? 'off' : ''}"></span></div></div>
     <div><div class="lbl">${EMP ? 'Empresa • saldo agora' : 'Saldo total agora'}</div><div class="big">${brl(x.total)}</div>${pv.pts.length > 1 ? `<div class="lbl" data-a="pf" data-f="" style="margin-top:6px">Previsto ${brl(pv.fim)} ${S.pv === 'tudo' ? 'após tudo que está agendado' : 'até o fim de ' + nomeMes(pv.lim)} ${ic('right')}</div>` : ''}</div></div>
   ${avisoServ()}
@@ -820,7 +846,8 @@ function render() {
   main.scrollTop = keep;
   $('#dock').innerHTML = `<nav>${[['home', 'home', 'Início'], ['prev', 'cal', 'Previstos'], ['dicas', 'bulb', 'Metas e dicas'], ['mes', 'chart', 'Mês'], ['mais', 'sliders', 'Ajustes']]
     .map(([k, i, n]) => `<button class="${t === k ? 'on' : ''}" data-a="tab" data-t="${k}" aria-label="${n}">${ic(i)}</button>`).join('')}</nav>
-    <button class="fab" data-a="novo" data-p="${t === 'prev' ? '1' : ''}" aria-label="Novo lançamento">${ic('plus')}</button>`;
+    <button class="fab" data-a="novo" data-p="${t === 'prev' ? '1' : ''}" aria-label="Novo lançamento">${ic('plus')}</button>
+    ${EMPON ? `<button class="pbub ${EMP ? 'emp' : ''}" id="pbub" aria-label="Trocar entre conta pessoal e da empresa">${EMP ? 'E' : 'P'}</button>` : ''}`;
 }
 
 /* ============ telas: metas e dicas ============ */
@@ -1106,8 +1133,8 @@ async function acao(a, el) {
   else if (a === 'ajuste') abrirAjuste(d.c);
   else if (a === 'receber') abrirReceber(d.id);
   else if (a === 'orc') abrirOrc();
-  else if (a === 'perfil') { try { localStorage.setItem('fin_perfil', d.p || ''); } catch (e) {} location.reload(); }
-  else if (a === 'empon') { try { localStorage.setItem('fin_emp', '1'); localStorage.setItem('fin_perfil', 'emp'); } catch (e) {} location.reload(); }
+  else if (a === 'perfil') await trocarPerfil(d.p || '');
+  else if (a === 'empon') { EMPON = true; try { localStorage.setItem('fin_emp', '1'); } catch (e) {} await trocarPerfil('emp', true); }
   else if (a === 'distribuir') abrirDistribuir(d.id);
   else if (a === 'distcalc') { const pc = Math.min(100, Math.max(0, num($('#dres').value) || 0)), n = S.socios.length, parte = Math.floor(distF.livre * (100 - pc) / 100 / n * 100) / 100;
     document.querySelectorAll('[data-ds]').forEach(e => { e.value = parte ? String(parte).replace('.', ',') : ''; }); distF.tot(); S.socios.forEach((x, i) => distF.dica(i)); }
