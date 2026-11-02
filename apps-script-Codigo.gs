@@ -20,7 +20,7 @@ const CATEGORIAS = ['Mercado','Comida','Transporte','Casa','Lazer','Saúde','Con
 const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'Transporte',onibus:'Transporte',
   gasolina:'Transporte',combustivel:'Transporte',ifood:'Comida',lanche:'Comida',almoco:'Comida',jantar:'Comida',
   padaria:'Comida',aluguel:'Casa',luz:'Contas',agua:'Contas',internet:'Contas',netflix:'Contas',farmacia:'Saúde',
-  remedio:'Saúde',cinema:'Lazer',bar:'Lazer',salario:'Receita',freela:'Receita',
+  remedio:'Saúde',cinema:'Lazer',bar:'Lazer',salario:'Salário',freela:'Receita',
   kindle:'Eletrônicos',fone:'Eletrônicos',celular:'Eletrônicos',notebook:'Eletrônicos',tv:'Eletrônicos',tablet:'Eletrônicos',
   mouse:'Eletrônicos',teclado:'Eletrônicos',monitor:'Eletrônicos',carregador:'Eletrônicos',camisa:'Roupas',tenis:'Roupas',
   calca:'Roupas',vestido:'Roupas',curso:'Educação',livro:'Educação',faculdade:'Educação',escola:'Educação'};
@@ -917,7 +917,7 @@ function chamar_(s, corpo) {
 // entradas (não previstas) do mês, para escolher qual já foi lançada como salário
 function entradas_(mes) {
   return rows_().filter(r => r[12] != 1 && r[2] === 'E' && !prev_(r) && r[4] !== 'Ajuste' && S_(r[1]).slice(0, 7) === S_(mes))
-    .map(r => ({ id: r[0], data: r[1], valor: Number(r[3]), desc: S_(r[5]) || S_(r[4]) })).sort((a, b) => b.data.localeCompare(a.data));
+      .map(r => ({ id: r[0], data: r[1], valor: Number(r[3]), desc: S_(r[5]) || S_(r[4]), cat: S_(r[4]) })).sort((a, b) => b.data.localeCompare(a.data));
 }
 function candidatos_(b) {
   const s = sociosFull_().find(x => x.nome === S_(b.socio));
@@ -931,13 +931,13 @@ function distribuir_(b) {
   (b.partes || []).forEach((p, i) => {
     const valor = Math.round(Number(p.valor) * 100) / 100, nome = S_(p.socio); if (!(valor > 0) || !nome) return;
     const rid = id + '-' + i, s = lista.find(x => x.nome === nome), vinc = S_(p.vinculo);
-    criar_({ id: rid, tipo: 'S', valor: valor, carteira: cart, data: data, categoria: 'Salários', descricao: 'Salário - ' + nome });
+    criar_({ id: rid, tipo: 'S', valor: valor, carteira: cart, data: data, categoria: 'Salário', descricao: 'Salário - ' + nome });
     let st = 'ok', msg = '';
     if (!s || !s.url || !s.chave) { st = 'erro'; msg = 'sócio sem link/chave'; }
     else {
       try {
-        const ops = vinc ? [{ op: 'edit', id: vinc, valor: valor, descricao: 'Salário empresa', categoria: 'Receita' }]
-                         : [{ op: 'add', id: 'emp-' + rid, tipo: 'E', valor: valor, descricao: 'Salário empresa', categoria: 'Receita', data: data }];
+        const ops = vinc ? [{ op: 'edit', id: vinc, valor: valor, descricao: 'Salário empresa', categoria: 'Salário' }]
+                         : [{ op: 'add', id: 'emp-' + rid, tipo: 'E', valor: valor, descricao: 'Salário empresa', categoria: 'Salário', data: data }];
         const j = chamar_(s, { acao: 'ops', ops: ops }), r0 = (j.res || [])[0];
         if (!r0 || r0.erro) { st = 'erro'; msg = (r0 && r0.erro) || 'resposta inesperada'; }
       } catch (e) { st = 'erro'; msg = String(e.message).slice(0, 80); }

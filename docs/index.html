@@ -214,7 +214,7 @@ const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'T
 const SERV = new Set(['mercado','supermercado','feira','uber','onibus','gasolina','combustivel','ifood','lanche','almoco','jantar','padaria','aluguel','luz','agua','internet','netflix','farmacia','remedio','cinema','bar','salario','freela']);
 const GENER = new Set(['de','da','do','das','dos','para','pra','com','sem','novo','nova','um','uma','o','a','e','em','no','na','fone','celular','notebook','tv','tablet','mouse','teclado','monitor','carregador','camisa','tenis','calca','vestido','livro','curso','compra','comprei','pix','parcela','parcelas','dia','prev','previsto','recebi','paguei','faculdade','escola']);
 // ícone e cor de cada categoria (linhas finas num círculo escuro, como no app de referência)
-const CATV = {Mercado:['cart','#a9e6a0'],Comida:['food','#ffb38a'],Transporte:['car','#f6cf7a'],Casa:['house','#a99cff'],Lazer:['ticket','#ff94c2'],'Saúde':['heart','#ff8a99'],Contas:['bill','#7fdccf'],Outros:['dots','#9a9a9a'],Eletrônicos:['phone','#8fdcf7'],Roupas:['shirt','#ff8ad8'],'Educação':['book','#ffd98a'],Receita:['in','#ee7ab8'],Ajuste:['scale','#9cc7ff'],'Transferência':['swap','#9cc7ff']};
+const CATV = {Mercado:['cart','#a9e6a0'],Comida:['food','#ffb38a'],Transporte:['car','#f6cf7a'],Casa:['house','#a99cff'],Lazer:['ticket','#ff94c2'],'Saúde':['heart','#ff8a99'],Contas:['bill','#7fdccf'],Outros:['dots','#9a9a9a'],Eletrônicos:['phone','#8fdcf7'],Roupas:['shirt','#ff8ad8'],'Educação':['book','#ffd98a'],Receita:['in','#ee7ab8'],'Salário':['in','#ee7ab8'],Ajuste:['scale','#9cc7ff'],'Transferência':['swap','#9cc7ff']};
 const BANCOS = ['#ffab7a','#7fd9ae','#f27a93','#a99cff','#8fbcff','#f6cf7a'];
 const ic = (n, c) => `<svg class="i ${c || ''}"><use href="#i-${n}"/></svg>`;
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
@@ -521,7 +521,7 @@ function parcelas() {
   });
   return Object.entries(g).filter(([k, x]) => x.fal > 0).map(([k, x]) => Object.assign(x, {k, pag: x.pag + x.min - 1}));
 }
-const adivinha = (d, tipo) => { if (tipo === 'E') return 'Receita'; for (const w of norm(d).split(/\s+/)) if (PADRAO[w]) return PADRAO[w]; return 'Outros'; };
+const adivinha = (d, tipo) => { if (tipo === 'E') return /\b(salario|prolabore|pro-labore|pro labore)\b/.test(norm(d)) ? 'Salário' : 'Receita'; for (const w of norm(d).split(/\s+/)) if (PADRAO[w]) return PADRAO[w]; return 'Outros'; };
 const nomeMes = ym => { const [y, m] = ym.split('-').map(Number); return MESES[m - 1]; };
 
 /* ============ conselheiro: metas e dicas (regras simples, tudo calculado no aparelho) ============ */
@@ -982,6 +982,7 @@ function abrirNovo(prev, scan) {
     $('#fprod').innerHTML = `<div class="prod"><div class="ico pic">${ic('search')}<img src="${esc(r.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></div><div class="t"><b>Foto encontrada</b>${r.cat ? 'Categoria: ' + esc(r.cat) : 'Toque no X se não for esse produto'}</div><button class="btn sm" data-a="tirarfotoform" aria-label="Remover foto">${ic('x')}</button></div>`; }, 750); });
   $('#sg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; form.tipo = b.dataset.v;
     $('#sg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('#fcat').innerHTML = '<option value="">Automática</option>' + opts(form.tipo === 'E' ? ['Salário', 'Receita'] : CATS); form.catTocada = false;
     const T = form.tipo === 'T'; $('#gd').style.display = T ? '' : 'none'; $('#gcat').style.display = T ? 'none' : ''; $('#gn').style.display = form.tipo === 'S' ? '' : 'none'; gp();
     $('#lc').textContent = T ? 'Da conta' : 'Conta'; $('#gcomp').style.display = T ? 'none' : ''; gp(); });
   $('#ff').addEventListener('change', async e => {
@@ -1034,7 +1035,7 @@ function abrirDet(id) {
   folha(`<h3 style="display:flex;align-items:center;gap:12px">${icone(r)}<span>${brl(r.valor)}</span>${r.prev ? '<span class="badge">previsto</span>' : ''}</h3>
   <div class="two"><div class="f"><label>Valor</label><input id="ev" inputmode="decimal" value="${String(r.valor).replace('.', ',')}"></div><div class="f"><label>Data</label><input id="et" type="date" value="${esc(r.data)}"></div></div>
   <div class="f"><label>Descrição</label><input id="ed" value="${esc(r.desc)}"></div>
-  <div class="two"><div class="f"><label>Categoria</label><select id="ec">${opts(Array.from(new Set(CATS.concat([r.cat, 'Receita', 'Ajuste', 'Transferência']))), r.cat)}</select></div>
+  <div class="two"><div class="f"><label>Categoria</label><select id="ec">${opts(Array.from(new Set(CATS.concat([r.cat, 'Salário', 'Receita', 'Ajuste', 'Transferência']))), r.cat)}</select></div>
    <div class="f"><label>Conta</label><select id="ew">${opts(cs, r.cart)}</select></div></div>
   ${r.grupo ? `<div class="hint" style="margin-top:0">Parcela ${r.n}/${r.total}. A edição vale só para esta parcela (a foto vale para todas).</div>` : ''}
   ${r.tipo === 'S' ? `<div class="prod" id="dfoto">${detFoto(r.img)}</div>` : ''}
@@ -1070,7 +1071,11 @@ function abrirDistribuir(id) {
   document.querySelectorAll('[data-dv]').forEach(e => e.addEventListener('change', () => dica(e.dataset.dv)));
   distF.tot = tot; distF.dica = dica;
   S.socios.forEach(async (x, i) => { if (!x.ok) return; try { const j = await api({acao: 'candidatos', socio: x.nome, mes: distF.mes}); const sel = $(`[data-dv="${i}"]`); if (!sel) return; distF.cand[i] = j.itens || [];
-    distF.cand[i].forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = dt(c.data).slice(0, 5) + ' • ' + c.desc + ' • ' + brl(c.valor); sel.appendChild(o); }); } catch (e) { const h = $(`[data-dh="${i}"]`); if (h) h.textContent = 'Não consegui ver as entradas de ' + x.nome + ' (' + e.message + '). Vai criar uma entrada nova.'; } });
+    const mk = c => { const o = document.createElement('option'); o.value = c.id; o.textContent = dt(c.data).slice(0, 5) + ' • ' + c.desc + ' • ' + brl(c.valor); return o; };
+    const sal = distF.cand[i].filter(c => c.cat === 'Salário'), out = distF.cand[i].filter(c => c.cat !== 'Salário');
+    sal.forEach(c => sel.appendChild(mk(c)));
+    if (out.length) { const g = document.createElement('optgroup'); g.label = sal.length ? 'Outras entradas' : 'Sem categoria Salário: outras entradas'; out.forEach(c => g.appendChild(mk(c))); sel.appendChild(g); }
+    if (!sal.length) { const h = $(`[data-dh="${i}"]`); if (h) h.textContent = 'Nenhuma entrada com categoria Salário neste mês. Se já lançou, mude a categoria dela para Salário (ou escolha abaixo).'; } } catch (e) { const h = $(`[data-dh="${i}"]`); if (h) h.textContent = 'Não consegui ver as entradas de ' + x.nome + ' (' + e.message + '). Vai criar uma entrada nova.'; } });
 }
 async function enviarDist(id, origem, data, cart, partes) {
   aviso('Enviando…');
