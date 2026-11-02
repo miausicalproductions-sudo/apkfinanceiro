@@ -137,12 +137,18 @@ a{color:var(--lima)}
 .qbar{display:flex;gap:4px;height:16px;margin:14px 0 14px}.qbar i{border-radius:9px;min-width:6px;transition:flex .3s}.qbar i.eu,.qlado.eu i{background:var(--lima)}.qbar i.pai,.qlado.pai i{background:var(--azul)}
 .qdois{display:grid;grid-template-columns:1fr 1fr;gap:10px}.qlado{border-radius:22px;padding:12px 14px;background:var(--card2)}.qlado.eu{border:1.5px solid var(--lima)}.qlado.pai{border:1.5px solid var(--azul)}
 .qlado .qn{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--mut)}.qlado .qn i{width:10px;height:10px;border-radius:50%;display:block}.qlado .qv{font-size:21px;font-weight:600;letter-spacing:-.03em;margin:4px 0 2px}.qlado .qs{font-size:12px;color:var(--mut)}
-.qtag{font-style:normal;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;margin-right:6px;color:var(--tx)}.qtag.eu{background:var(--lima)}.qtag.pai{background:var(--azul)}
+.qtag{font-style:normal;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 7px;margin-right:6px;color:white}.qtag.eu{background:var(--lima)}.qtag.pai{background:var(--azul)}
 .chipsw{border:0;border-radius:999px;padding:7px 12px;font:inherit;font-weight:600;font-size:12.5px;background:rgba(255,255,255,.14);color:var(--tx);backdrop-filter:blur(8px)}.chipsw.emp{background:var(--azul);color:var(--tx)}
-.dist .f label{font-size:13px}.dist select,.dist input{font-size:15px}.stt{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}.stt.ok{background:var(--lima);color:var(--on)}.stt.er{background:var(--verm);color:var(--tx)}
-.pbub{position:fixed;right:14px;top:calc(var(--top) + 7px);z-index:12;width:40px;height:40px;border-radius:50%;border:2px solid var(--bg);background:var(--lima);color:var(--on);font:700 17px/1 inherit;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.28);touch-action:manipulation;user-select:none;-webkit-user-select:none}.pbub.emp{background:var(--azul);color:var(--tx)}
+.dist .f label{font-size:13px}.dist select,.dist input{font-size:15px}.stt{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}.stt.ok{background:var(--lima);color:var(--on)}.stt.er{background:var(--verm);color:white}
+.pbub{position:fixed;right:14px;top:calc(var(--top) + 7px);z-index:12;width:40px;height:40px;border-radius:50%;border:2px solid var(--bg);background:var(--lima);color:var(--on);font:700 17px/1 inherit;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.28);touch-action:manipulation;user-select:none;-webkit-user-select:none}.pbub.emp{background:var(--azul);color:white}
 .pmenu{position:fixed;right:14px;top:calc(var(--top) + 54px);z-index:30;background:var(--card2);border:1px solid var(--line2);border-radius:22px;padding:6px;box-shadow:0 14px 40px rgba(255,255,255,.55);min-width:170px}.pmenu button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--tx);font:inherit;font-weight:600;padding:12px 14px;border-radius:16px}.pmenu button.on{background:var(--card)}.pmenu i{width:28px;height:28px;border-radius:50%;display:block;flex:none}
 .tem-bub .hero .pilha{margin-right:50px}
+.pbub{perspective:600px}.pbub.flip{animation:pflip .55s ease}@keyframes pflip{0%{transform:rotateY(0) scale(1)}50%{transform:rotateY(90deg) scale(1.3)}100%{transform:rotateY(0) scale(1)}}
+.pbub.sync:after{content:"";position:absolute;inset:-6px;border-radius:50%;border:3px solid transparent;border-top-color:var(--tx);border-right-color:var(--tx);animation:pspin .8s linear infinite}@keyframes pspin{to{transform:rotate(360deg)}}
+.pveil{position:fixed;inset:0;z-index:50;pointer-events:none;opacity:.97;clip-path:circle(0 at calc(100% - 34px) calc(var(--top) + 27px));transition:clip-path .38s cubic-bezier(.2,.7,.2,1),opacity .3s;display:grid;place-items:center}
+.pveil.go{clip-path:circle(160% at calc(100% - 34px) calc(var(--top) + 27px))}.pveil.out{opacity:0}
+.pvl{display:flex;flex-direction:column;align-items:center;gap:12px;color:white;font-size:26px;font-weight:700;letter-spacing:-.03em}.pva{width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.3);background-size:cover;background-position:center;border:3px solid rgba(255,255,255,.8)}
+@media (prefers-reduced-motion:reduce){.pbub.flip,.pbub.sync:after{animation:none}}
 
 /* ===== tema pastel (versão iPhone) ===== */
 body{background:var(--bg)}
@@ -240,22 +246,35 @@ function fotoQuadrada(file) {
       c.getContext('2d').drawImage(img, (img.width - k) / 2, (img.height - k) / 2, k, k, 0, 0, n, n); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg', .85)); };
     img.onerror = () => rej(new Error('Não consegui abrir essa imagem.')); img.src = u; });
 }
-document.addEventListener('change', async e => { const t = e.target; if (!t || t.dataset.fp === undefined) return; const f = t.files && t.files[0]; if (!f) return;
+document.addEventListener('change', async e => { const t = e.target; if (t && t.dataset && t.dataset.meu !== undefined) { try { localStorage.setItem('fin_meunome', t.value); } catch (x) {} aviso(t.value ? 'Salvo: você é ' + t.value : 'Nome removido', 'good'); return; }
+  if (!t || t.dataset.fp === undefined) return; const f = t.files && t.files[0]; if (!f) return;
   try { const d = await fotoQuadrada(f); localStorage.setItem(t.dataset.fp === 'emp' ? 'e_fin_foto' : 'fin_foto', d); render(); aviso('Foto salva', 'good'); } catch (er) { aviso(er.message, 'bad'); } });
 const avatarCss = p => fotoDe(p) ? `background-image:url(${fotoDe(p)});background-size:cover;background-position:center;color:transparent` : '';
 // troca instantânea entre conta pessoal e da empresa (cada uma tem seus dados guardados à parte)
+let trocando = false;
+const espera = ms => new Promise(r => setTimeout(r, ms));
 async function trocarPerfil(p, irAjustes) {
-  const novo = p === 'emp'; if (novo === EMP) return;
-  salvarLocal();
-  for (let i = 0; i < 40 && enviando; i++) await new Promise(r => setTimeout(r, 100));      // deixa terminar o envio em andamento
-  EMP = novo; VNEED = Math.max(VSERV, EMP ? 7 : 0); if (EMP) EMPON = true;
-  try { localStorage.setItem('fin_perfil', EMP ? 'emp' : ''); if (EMP) localStorage.setItem('fin_emp', '1'); } catch (e) {}
-  Object.assign(S, {cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], socios: [], repasses: [], desde: 0, fila: [], srvVer: null, pf: '', todos: false, tab: irAjustes ? 'mais' : 'home', rede: null, mes: isoHoje().slice(0, 7)});
-  carregarLocal(); reaplicar(); render(); document.querySelectorAll('.pmenu').forEach(x => x.remove());
-  aviso(EMP ? 'Conta da empresa' : 'Conta pessoal', 'good');
-  if (!S.cfg.url) { S.tab = 'mais'; render(); if (EMP) aviso('Coloque o link e a chave da empresa em Conexão.', ''); return; }
-  try { await sync(); reaplicar(); S.rede = true; } catch (e) { S.rede = false; }
-  render(); enviar();
+  const novo = p === 'emp'; if (novo === EMP || trocando) return; trocando = true;
+  const calmo = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches, veu = document.createElement('div');
+  try {
+    // retorno visual: a bolinha vira, e uma onda da cor da conta nova cobre a tela enquanto os dados trocam
+    veu.className = 'pveil'; veu.style.background = novo ? 'var(--azul)' : 'var(--lima)'; veu.innerHTML = `<div class="pvl"><span class="pva" style="${avatarCss(novo ? 'emp' : '')}"></span>${novo ? 'Empresa' : 'Pessoal'}</div>`;
+    if (!calmo) { document.body.appendChild(veu); const b0 = $('#pbub'); if (b0) b0.classList.add('flip'); requestAnimationFrame(() => requestAnimationFrame(() => veu.classList.add('go'))); }
+    const t0 = Date.now(); salvarLocal();
+    for (let i = 0; i < 3 && enviando; i++) await espera(100);      // dá um instante para o envio em andamento terminar; se não terminar, ele é abandonado (reenvia depois, sem duplicar)
+    GEN++; enviando = false; refazer = false;
+    if (!calmo) await espera(Math.max(0, 330 - (Date.now() - t0)));
+    EMP = novo; VNEED = Math.max(VSERV, EMP ? 8 : 0); if (EMP) EMPON = true;
+    try { localStorage.setItem('fin_perfil', EMP ? 'emp' : ''); if (EMP) localStorage.setItem('fin_emp', '1'); } catch (e) {}
+    Object.assign(S, {cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], socios: [], repasses: [], desde: 0, fila: [], srvVer: null, pf: '', todos: false, tab: irAjustes ? 'mais' : 'home', rede: null, mes: isoHoje().slice(0, 7)});
+    carregarLocal(); reaplicar(); render(); document.querySelectorAll('.pmenu').forEach(x => x.remove());
+    veu.classList.add('out'); setTimeout(() => veu.remove(), 320);
+    if (!S.cfg.url) { S.tab = 'mais'; render(); if (EMP) aviso('Coloque o link e a chave da empresa em Conexão.', ''); return; }
+    trocando = false;      // já dá para trocar de novo mesmo que a rede esteja lenta
+    const b1 = $('#pbub'); if (b1) b1.classList.add('sync');      // anel girando enquanto busca as novidades
+    try { await sync(); reaplicar(); S.rede = true; } catch (e) { S.rede = false; }
+    render(); enviar(); drenarEmpresa();
+  } finally { trocando = false; setTimeout(() => veu.remove(), 800); }
 }
 function menuPerfil() {
   document.querySelectorAll('.pmenu').forEach(x => x.remove()); const m = document.createElement('div'); m.className = 'pmenu';
@@ -305,8 +324,8 @@ function mesclar(r) {
   salvarLocal();
 }
 async function sync(completo) {
-  if (completo) { S.desde = 0; S.linhas = {}; }
-  mesclar(await api({acao: 'sync', desde: S.desde})); S.rede = true;
+  const g = GEN; if (completo) { S.desde = 0; S.linhas = {}; }
+  const r = await api({acao: 'sync', desde: S.desde}); if (g !== GEN) return; mesclar(r); S.rede = true;
 }
 /* ---- tudo é salvo NO APARELHO primeiro; o envio para a planilha acontece em segundo plano ---- */
 const somaMes = (iso, k) => { const [y, m, d] = iso.split('-').map(Number), t = new Date(Date.UTC(y, m - 1 + k, 1)), ult = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate(); t.setUTCDate(Math.min(d, ult)); return t.toISOString().slice(0, 10); };
@@ -395,40 +414,63 @@ function aplicarTexto(it) {
 // reaplica o que ainda não foi enviado por cima do que veio da planilha (nada "pisca" ou volta atrás)
 function reaplicar() { S.fila.forEach(it => { if (it.k === 'texto') aplicarTexto(it); else it.ops.forEach(aplicar); }); }
 
-let enviando = false, timer = null, refazer = false;
+let enviando = false, timer = null, refazer = false, GEN = 0;      // GEN muda a cada troca de conta: respostas atrasadas da conta anterior são descartadas
 function agendar(ms) { clearTimeout(timer); timer = setTimeout(enviar, ms == null ? 500 : ms); }
 // esvazia a fila em segundo plano; no fim, puxa as novidades da planilha
 async function enviar() {
   if (enviando) { refazer = true; return; }
-  enviando = true;
+  enviando = true; const g = GEN;
   try {
     do {
       refazer = false; let completo = false;
       while (S.fila.length) {
         const it = S.fila[0];
         try {
-          if (it.k === 'texto') { await api({acao: 'texto', texto: it.texto, id: it.id}); S.fila.shift(); }
+          if (it.k === 'texto') { await api({acao: 'texto', texto: it.texto, id: it.id}); if (g !== GEN) return; S.fila.shift(); }
           else {
             const lote = []; let n = 0;
             while (S.fila[n] && S.fila[n].k === 'ops' && lote.length < 40) { lote.push(...S.fila[n].ops); n++; }
-            const r = await api({acao: 'ops', desde: S.desde, ops: lote}); S.fila.splice(0, n); mesclar(r);
+            const r = await api({acao: 'ops', desde: S.desde, ops: lote}); if (g !== GEN) return; S.fila.splice(0, n); mesclar(r);
             const mau = (r.res || []).find(x => x.erro); if (mau) { aviso('A planilha recusou uma alteração: ' + mau.erro, 'bad'); completo = true; }
           }
           S.rede = true; salvarLocal();
         } catch (e) {
+          if (g !== GEN) return;
           if (e.rede || e.cfg) { S.rede = false; return; }
           S.fila.shift(); aviso(e.message, 'bad'); completo = true; salvarLocal();    // erro definitivo: descarta esse item
         }
       }
-      try { await sync(completo); S.rede = true; } catch (e) { if (e.rede) { S.rede = false; return; } }
+      try { await sync(completo); if (g !== GEN) return; S.rede = true; } catch (e) { if (g !== GEN) return; if (e.rede) { S.rede = false; return; } }
       reaplicar(); render();
     } while (refazer);
-  } finally { enviando = false; reaplicar(); render(); }
+  } finally { if (g === GEN) { enviando = false; reaplicar(); render(); } }
 }
 const atualizar = () => enviar();
 // salva no aparelho na hora e manda para a planilha em segundo plano
+// conta pessoal: salário marcado como recebido -> avisa a empresa para dar a saída correspondente como paga
+const meuNome = () => { try { return localStorage.getItem('fin_meunome') || ''; } catch (e) { return ''; } };
+const cfgEmpresa = () => { try { const c = JSON.parse(localStorage.getItem('e_fin_cfg') || '{}'); return /^https:\/\//.test(c.url || '') && c.chave ? c : null; } catch (e) { return null; } };
+const empFila = () => { try { return JSON.parse(localStorage.getItem('fin_empfila') || '[]'); } catch (e) { return []; } };
+const empFilaSet = a => { try { localStorage.setItem('fin_empfila', JSON.stringify(a)); } catch (e) {} };
+let drenando = false;
+async function drenarEmpresa() {
+  if (drenando || EMP) return; const c = cfgEmpresa(); if (!c) return; drenando = true;
+  try { let q = empFila();
+    while (q.length) { const it = q[0];
+      let j; try { const r = await fetch(c.url, {method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({chave: c.chave, acao: 'salario_recebido', socio: it.socio, ref: it.ref, valor: it.valor, data: it.data}), redirect: 'follow'}); j = JSON.parse(await r.text()); } catch (e) { break; }      // sem rede: tenta depois
+      q = empFila().filter(x => x.ref !== it.ref); empFilaSet(q);
+      if (j.erro) aviso('Empresa: ' + j.erro, 'bad'); else if (!j.ja) aviso('Empresa atualizada: salário de ' + brl(it.valor) + ' ' + (j.como === 'pago' ? 'marcado como pago' : 'registrado como saída'), 'good'); }
+  } finally { drenando = false; }
+}
+function avisarEmpresa(ops) {
+  if (EMP || !EMPON || !meuNome() || !cfgEmpresa()) return; const h = isoHoje(), q = empFila();
+  ops.forEach(o => { if (!['receber', 'edit', 'add'].includes(o.op)) return; const r = S.linhas[o.id];
+    if (!r || r.tipo !== 'E' || r.cat !== 'Salário' || r.prev || r.data > h || /^emp-/.test(r.id) || norm(r.desc) === 'salario empresa') return;
+    if (!q.some(x => x.ref === r.id)) q.push({ref: r.id, valor: r.valor, data: r.data, socio: meuNome()}); });
+  empFilaSet(q); drenarEmpresa();
+}
 async function fazer(ops, ok) {
-  ops.forEach(aplicar); S.fila.push({k: 'ops', ops}); salvarLocal();
+  ops.forEach(aplicar); S.fila.push({k: 'ops', ops}); salvarLocal(); try { avisarEmpresa(ops); } catch (e) {}
   if (ok) aviso(ok, 'good');
   render(); agendar(); return true;
 }
@@ -765,7 +807,7 @@ const PAGN = {eu: 'Eu', pai: 'Pai'};
 let EMP = (() => { try { return localStorage.getItem('fin_perfil') === 'emp'; } catch (e) { return false; } })();
 let EMPON = (() => { try { return EMP || localStorage.getItem('fin_emp') === '1'; } catch (e) { return false; } })();
 const KP = k => EMP ? 'e_' + k : k;
-let VNEED = Math.max(VSERV, EMP ? 7 : 0);
+let VNEED = Math.max(VSERV, EMP ? 8 : 0);
 const avisoServ = () => S.srvVer !== null && S.srvVer < VNEED ? `<div class="card" style="border-color:#f7b6c4"><b style="color:var(--verm)">${ic('alert')} O código do Apps Script está desatualizado</b><div class="mut" style="font-size:13.5px;margin:6px 0 10px">Sem atualizar, parcelas, metas e previstos ficam errados na planilha. Abra o código novo, copie tudo, cole no Apps Script no lugar do antigo e crie uma nova versão em Implantar > Gerenciar implantações > editar. Depois rode a função <b style="color:var(--tx)">atualizar</b> uma vez.</div><a class="btn pri full" href="https://raw.githubusercontent.com/miausicalproductions-sudo/apkfinanceiro/main/apps-script-Codigo.gs" target="_blank" rel="noopener">Abrir o código novo</a></div>` : '';
 function telaHome() {
   const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7)), pv = projecao();
@@ -837,13 +879,15 @@ function telaMes() {
 function cartaoEmpresa() {
   if (!EMPON) return `<div class="sec" style="margin-top:0"><h2>Empresa</h2></div><div class="card"><div class="hint" style="margin:0 0 12px">Tem uma empresa com sócios? Ative a conta da empresa neste aparelho para ver o caixa compartilhado e distribuir as entradas.</div><button class="btn full" data-a="empon">Ativar conta da empresa</button></div>`;
   const rp = S.repasses.slice().reverse().slice(0, 12);
-  return `<div class="sec" style="margin-top:0"><h2>Conta</h2></div><div class="card"><div class="seg" id="sper"><button class="${EMP ? '' : 'on'}" data-a="perfil" data-p="">Pessoal</button><button class="${EMP ? 'on' : ''}" data-a="perfil" data-p="emp">Empresa</button></div>
+  let nomes = []; try { nomes = (JSON.parse(localStorage.getItem('e_fin_state') || '{}').socios || []).map(x => x.nome); } catch (e) {}
+  const quem = !EMP ? `<div class="sec"><h2>Quem sou eu na empresa</h2></div><div class="card"><div class="f" style="margin:0"><select data-meu="1"><option value="">Escolha…</option>${opts(nomes, meuNome())}</select></div><div class="hint" style="margin:10px 0 0">${nomes.length ? 'Quando você marcar um salário (categoria Salário) como recebido, a empresa dá a saída correspondente como paga.' : 'Abra a conta da empresa uma vez (bolinha) para carregar a lista de sócios.'}</div></div>` : '';
+  return quem + `<div class="sec" style="margin-top:0"><h2>Conta</h2></div><div class="card"><div class="seg" id="sper"><button class="${EMP ? '' : 'on'}" data-a="perfil" data-p="">Pessoal</button><button class="${EMP ? 'on' : ''}" data-a="perfil" data-p="emp">Empresa</button></div>
    <div class="hint" style="margin:10px 0 0">${EMP ? 'Você está vendo o caixa da empresa (outra planilha). Cada conta tem o seu link e a sua chave.' : 'Troque para Empresa para ver o caixa da empresa.'}</div></div>`
   + `<div class="sec"><h2>Foto da bolinha</h2></div><div class="card" style="padding:6px 18px">${[['', 'Pessoal', 'var(--lima)'], ['emp', 'Empresa', 'var(--azul)']].map(([k, n, c]) => `<div class="row" style="cursor:default"><span class="pbub" style="position:static;flex:none;background:${c};${avatarCss(k)}">${n[0]}</span><div class="t"><b>${n}</b><span>${fotoDe(k) ? 'foto escolhida' : 'sem foto (mostra a letra)'}</span></div>${fotoDe(k) ? `<button class="btn sm" data-a="tirarfoto" data-p="${k}">Tirar</button>` : ''}<label class="btn sm" style="margin:0">Escolher<input type="file" accept="image/*" data-fp="${k}" style="display:none"></label></div>`).join('')}</div>`
   + (EMP ? `<div class="sec"><h2>Sócios</h2><button class="btn sm" data-a="novosocio">${ic('plus')} Sócio</button></div>
    <div class="card" style="padding:6px 18px">${S.socios.length ? S.socios.map(x => `<div class="row" data-a="editsocio" data-n="${esc(x.nome)}"><div class="ico">${ic('bank')}</div><div class="t"><b>${esc(x.nome)}</b><span>${x.ok ? 'conectado ao app dele(a)' : 'falta o link e a chave'}</span></div></div>`).join('') : '<div class="empty">Cadastre cada sócio com o link e a chave do app pessoal dele(a). É assim que o salário chega sozinho na conta de cada um.</div>'}</div>
    <div class="sec"><h2>Repasses</h2></div>
-   <div class="card" style="padding:6px 18px">${rp.length ? rp.map(x => `<div class="row"${x.status === 'ok' ? '' : ` data-a="repetirdist" data-id="${esc(x.id.replace(/-\d+$/, ''))}"`}><div class="t"><b>${esc(x.socio)} • ${brl(x.valor)}</b><span>${dt(x.data)}${x.status === 'ok' ? ' • chegou no app' : ' • não chegou: ' + esc(x.msg || 'erro') + ' (toque para tentar de novo)'}</span></div><span class="stt ${x.status === 'ok' ? 'ok' : 'er'}">${x.status === 'ok' ? 'enviado' : 'falhou'}</span></div>`).join('') : '<div class="empty">Nenhum repasse ainda. Abra uma entrada da empresa e toque em Distribuir.</div>'}</div>` : '');
+   <div class="card" style="padding:6px 18px">${rp.length ? rp.map(x => `<div class="row"${x.status === 'ok' ? '' : ` data-a="repetirdist" data-id="${esc(x.id.replace(/-\d+$/, ''))}"`}><div class="t"><b>${esc(x.socio)} • ${brl(x.valor)}</b><span>${dt(x.data)}${x.origem === 'salario_recebido' ? ' • confirmado por ele(a) no app' : x.status === 'ok' ? ' • chegou no app' : ' • não chegou: ' + esc(x.msg || 'erro') + ' (toque para tentar de novo)'}</span></div><span class="stt ${x.status === 'ok' ? 'ok' : 'er'}">${x.status === 'ok' ? 'enviado' : 'falhou'}</span></div>`).join('') : '<div class="empty">Nenhum repasse ainda. Abra uma entrada da empresa e toque em Distribuir.</div>'}</div>` : '');
 }
 function telaMais() {
   const P = parcelas(), c = S.cfg;

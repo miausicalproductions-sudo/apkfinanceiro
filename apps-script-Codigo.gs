@@ -28,7 +28,7 @@ const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'T
 //          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem | 16 pagador (vazio = quem registra; 'pai' = pago pelo pai)
 const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem','pagador'];
 const NC = H.length;
-const VERSAO = 7;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
+const VERSAO = 8;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
 
 /* ---------- INSTALAÇÃO ---------- */
 function instalar() {
@@ -924,6 +924,22 @@ function candidatos_(b) {
   if (!s || !s.url || !s.chave) throw new Error('sócio sem link/chave');
   return { ok: 1, itens: chamar_(s, { acao: 'entradas', mes: b.mes || hoje_().slice(0, 7) }).itens || [] };
 }
+// um sócio marcou o salário como recebido no app dele(a): a saída correspondente na empresa passa a "saiu" (ou é criada). Idempotente por ref.
+function salarioRecebido_(b) {
+  const nome = S_(b.socio), ref = S_(b.ref); if (!nome || !ref) throw new Error('dados incompletos');
+  const so = sociosFull_().find(x => x.nome.toLowerCase() === nome.toLowerCase());
+  if (!so) throw new Error('"' + nome + '" não está cadastrado como sócio na empresa');
+  const mid = 'rec-' + ref;
+  if (repasses_().some(x => x.id === mid)) return { ok: 1, ja: 1 };
+  const valor = Math.round(Number(b.valor) * 100) / 100, data = b.data || hoje_(), desc = 'Salário - ' + so.nome;
+  if (!(valor > 0)) throw new Error('valor inválido');
+  const pr = rows_().find(r => r[12] != 1 && r[2] === 'S' && r[4] === 'Salário' && prev_(r) && S_(r[5]).toLowerCase() === desc.toLowerCase());
+  let como = 'criado';
+  if (pr) { mudar_(x => x[0] === pr[0], x => { x[14] = 0; x[1] = data; x[3] = valor; }); como = 'pago'; }
+  else criar_({ id: mid, tipo: 'S', valor: valor, carteira: CARTEIRA_PADRAO, data: data, categoria: 'Salário', descricao: desc });
+  upsertAba_('Repasses', HRP, 0, [mid, 'salario_recebido', so.nome, valor, S_(ref), 'ok', data, como, Date.now()]);
+  return { ok: 1, como: como };
+}
 // divide uma entrada da empresa: lança a saída "Salário" aqui e a entrada (ou ajusta a já lançada) no app de cada sócio. Idempotente.
 function distribuir_(b) {
   const id = S_(b.id); if (!id) throw new Error('distribuição sem id');
@@ -931,7 +947,7 @@ function distribuir_(b) {
   (b.partes || []).forEach((p, i) => {
     const valor = Math.round(Number(p.valor) * 100) / 100, nome = S_(p.socio); if (!(valor > 0) || !nome) return;
     const rid = id + '-' + i, s = lista.find(x => x.nome === nome), vinc = S_(p.vinculo);
-    criar_({ id: rid, tipo: 'S', valor: valor, carteira: cart, data: data, categoria: 'Salário', descricao: 'Salário - ' + nome });
+    if (!(vinc && repasses_().some(x => x.id === 'rec-' + vinc))) criar_({ id: rid, tipo: 'S', valor: valor, carteira: cart, data: data, categoria: 'Salário', descricao: 'Salário - ' + nome });      // se o sócio já avisou que recebeu, a saída já está lançada
     let st = 'ok', msg = '';
     if (!s || !s.url || !s.chave) { st = 'erro'; msg = 'sócio sem link/chave'; }
     else {
@@ -968,6 +984,7 @@ function api_(b) {
   if (b.acao === 'agenda') return agenda_();
   if (b.acao === 'entradas') return { ok: 1, itens: entradas_(b.mes) };
   if (b.acao === 'candidatos') return candidatos_(b);
+  if (b.acao === 'salario_recebido') return salarioRecebido_(b);
   if (b.acao === 'distribuir') return Object.assign(distribuir_(b), sync_(Number(b.desde || 0)));
   if (b.acao === 'texto') return texto_api_(b.texto, b.id);          // "Addit": mesma sintaxe do bot
   if (b.acao === 'comp') return comp_api_(b);                          // foto/print em base64 -> Drive + leitura
