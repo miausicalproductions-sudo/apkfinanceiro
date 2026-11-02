@@ -28,7 +28,7 @@ const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'T
 //          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem
 const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem'];
 const NC = H.length;
-const VERSAO = 4;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
+const VERSAO = 5;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
 
 /* ---------- INSTALAÇÃO ---------- */
 function instalar() {
@@ -849,6 +849,32 @@ function metaUpsert_(o) {
   });
 }
 
+/* ---------- ROTINAS (entradas e saídas que se repetem: só alimentam as previsões) ---------- */
+const HR = ['id','descricao','valor','tipo','freq','dia','categoria','carteira','ativa','atualizado','excluido'];
+function rotSheet_() {
+  let s = sh_('Rotinas');
+  if (!s) { s = SpreadsheetApp.getActive().insertSheet('Rotinas'); s.appendRow(HR); s.setFrozenRows(1); s.getRange('A:A').setNumberFormat('@'); }
+  return s;
+}
+function rotinas_() {
+  const s = rotSheet_(), n = s.getLastRow();
+  if (n < 2) return [];
+  return s.getRange(2, 1, n - 1, HR.length).getValues().filter(r => S_(r[0]) && Number(r[10]) !== 1)
+    .map(r => ({ id: S_(r[0]), desc: S_(r[1]), valor: Number(r[2]) || 0, tipo: S_(r[3]) === 'E' ? 'E' : 'S', freq: S_(r[4]) || 'mes', dia: Number(r[5]) || 0, cat: S_(r[6]), cart: S_(r[7]), ativa: Number(r[8]) !== 0 }));
+}
+function rotinaUpsert_(o) {
+  comLock_(() => {
+    const s = rotSheet_(), n = s.getLastRow(), id = S_(o.id);
+    if (!id) throw new Error('rotina sem id');
+    const ids = n < 2 ? [] : s.getRange(2, 1, n - 1, 1).getValues().flat().map(S_), i = ids.indexOf(id);
+    const old = i >= 0 ? s.getRange(i + 2, 1, 1, HR.length).getValues()[0] : [id, '', 0, 'S', 'mes', 1, '', '', 1, 0, 0];
+    const pick = (k, j) => o[k] != null ? o[k] : old[j];
+    const row = [id, S_(pick('descricao', 1)).slice(0, 80), Number(pick('valor', 2)) || 0, S_(pick('tipo', 3)) === 'E' ? 'E' : 'S', S_(pick('freq', 4)),
+      Number(pick('dia', 5)) || 0, S_(pick('categoria', 6)), S_(pick('carteira', 7)), pick('ativa', 8) === 0 || pick('ativa', 8) === false ? 0 : 1, Date.now(), o.del ? 1 : 0];
+    if (i >= 0) s.getRange(i + 2, 1, 1, HR.length).setValues([row]); else s.appendRow(row);
+  });
+}
+
 /* ---------- API PARA A HTML ---------- */
 // Previstos que vencem hoje, amanhã ou já passaram sem confirmar (usado pelos avisos do app)
 function agenda_() {
@@ -861,7 +887,7 @@ function agenda_() {
 
 function sync_(desde) {
   const agora = Date.now();
-  return { ver: VERSAO, agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_(), metas: metas_() };
+  return { ver: VERSAO, agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_(), metas: metas_(), rotinas: rotinas_() };
 }
 function api_(b) {
   if (b.acao === 'sync') return sync_(Number(b.desde || 0));
@@ -881,6 +907,8 @@ function api_(b) {
         else if (o.op === 'adiantar') adiantar_(o.descricao, o.qtd);
         else if (o.op === 'carteira') upsert_('Carteiras', o.nome, [o.nome, Number(o.ini) || 0]);
         else if (o.op === 'meta') metaUpsert_(o);
+        else if (o.op === 'rotina') rotinaUpsert_(o);
+        else if (o.op === 'rotinadel') rotinaUpsert_({ id: o.id, del: 1 });
         else if (o.op === 'metadel') metaUpsert_({ id: o.id, del: 1 });
         else if (o.op === 'orc') upsert_('Orcamentos', o.categoria, [o.categoria, Number(o.limite) || 0]);
         return { id: o.id || o.nome, ok: 1 };

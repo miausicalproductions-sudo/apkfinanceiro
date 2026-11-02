@@ -111,7 +111,7 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#7
 .fab{width:62px;height:62px;border-radius:50%;border:0;background:var(--lima);color:#000;font-size:28px;display:grid;place-items:center;box-shadow:0 10px 30px rgba(197,244,0,.25)}
 /* folhas */
 .sheetbg{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:20;display:flex;align-items:flex-end}
-.sheet{width:100%;max-height:93%;overflow-y:auto;background:#0b0b0b;border-radius:32px 32px 0 0;border:1px solid var(--line2);border-bottom:0;padding:10px 18px calc(var(--bot) + 20px)}
+.sheet{width:100%;max-height:93%;overflow-y:auto;overscroll-behavior:contain;background:#0b0b0b;border-radius:32px 32px 0 0;border:1px solid var(--line2);border-bottom:0;padding:10px 18px calc(var(--bot) + 20px)}
 .sheet:before{content:"";display:block;width:42px;height:4px;border-radius:9px;background:#333;margin:0 auto 16px}
 .sheet h3{margin:0 0 16px;font-size:24px;font-weight:600;letter-spacing:-.03em}
 .f{margin-bottom:12px}.f label{display:block;font-size:12.5px;color:var(--mut);margin:0 0 6px 6px}
@@ -207,12 +207,12 @@ const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
 const num = t => { let s = String(t).trim().replace(/^R\$\s*/i, ''); const neg = s[0] === '-'; s = s.replace(/^[-+]/, '');
   s = /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(',', '.');
   const v = parseFloat(s); return isNaN(v) ? null : (neg ? -v : v); };
-const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, srvVer: null, pf: '', todos: false, rede: null };
+const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, srvVer: null, pf: '', todos: false, rede: null };
 
-function salvarLocal() { try { localStorage.setItem('fin_state', JSON.stringify({linhas: S.linhas, carteiras: S.carteiras, orc: S.orc, metas: S.metas, desde: S.desde, fila: S.fila})); } catch (e) {} clearTimeout(tAg); tAg = setTimeout(() => { try { gravarAgenda(); } catch (e) {} }, 800); }
+function salvarLocal() { try { localStorage.setItem('fin_state', JSON.stringify({linhas: S.linhas, carteiras: S.carteiras, orc: S.orc, metas: S.metas, rotinas: S.rotinas, desde: S.desde, fila: S.fila})); } catch (e) {} clearTimeout(tAg); tAg = setTimeout(() => { try { gravarAgenda(); } catch (e) {} }, 800); }
 function carregarLocal() {
   try { const c = JSON.parse(localStorage.getItem('fin_cfg') || '{}'); S.cfg.url = c.url || ''; S.cfg.chave = c.chave || ''; } catch (e) {}
-  try { const o = JSON.parse(localStorage.getItem('fin_state') || '{}'); if (o.linhas) Object.assign(S, {linhas: o.linhas, carteiras: o.carteiras || [], orc: o.orc || [], metas: o.metas || [], desde: o.desde || 0, fila: o.fila || []}); } catch (e) {}
+  try { const o = JSON.parse(localStorage.getItem('fin_state') || '{}'); if (o.linhas) Object.assign(S, {linhas: o.linhas, carteiras: o.carteiras || [], orc: o.orc || [], metas: o.metas || [], rotinas: o.rotinas || [], desde: o.desde || 0, fila: o.fila || []}); } catch (e) {}
 }
 // grava link e chave também onde o widget nativo consegue ler (Preferences do Capacitor)
 async function salvarCfg() {
@@ -239,6 +239,7 @@ function mesclar(r) {
   if (r.carteiras) S.carteiras = r.carteiras;
   if (r.orcamentos) S.orc = r.orcamentos;
   if (r.metas) S.metas = r.metas;
+  if (r.rotinas) S.rotinas = r.rotinas;
   if (r.agora) { S.desde = r.agora - 2000; S.srvVer = Number(r.ver) || 0; }
   salvarLocal();
 }
@@ -282,6 +283,9 @@ function aplicar(o) {
   else if (o.op === 'carteira') { const i = S.carteiras.findIndex(c => c.nome.toLowerCase() === String(o.nome).toLowerCase()); const c = {nome: o.nome, ini: Number(o.ini) || 0}; if (i >= 0) S.carteiras[i] = c; else S.carteiras.push(c); }
   else if (o.op === 'meta') { let m = S.metas.find(x => x.id === o.id); if (!m) { m = {id: o.id, nome: '', valor: 0, prazo: '', carteira: '', img: '', cat: '', feita: false, n: 0}; S.metas.push(m); }
     ['nome', 'valor', 'prazo', 'carteira', 'cat', 'n'].forEach(k => { const kk = k === 'cat' ? 'categoria' : k; if (o[kk] != null) m[k] = o[kk]; }); if (o.imagem != null) m.img = o.imagem; if (o.feita != null) m.feita = !!o.feita; }
+  else if (o.op === 'rotina') { let r = S.rotinas.find(x => x.id === o.id); if (!r) { r = {id: o.id, desc: '', valor: 0, tipo: 'S', freq: 'mes', dia: 1, cat: '', cart: '', ativa: true}; S.rotinas.push(r); }
+    if (o.descricao != null) r.desc = o.descricao; ['valor', 'tipo', 'freq', 'dia'].forEach(k => { if (o[k] != null) r[k] = o[k]; }); if (o.ativa != null) r.ativa = !!o.ativa; }
+  else if (o.op === 'rotinadel') S.rotinas = S.rotinas.filter(x => x.id !== o.id);
   else if (o.op === 'metadel') S.metas = S.metas.filter(x => x.id !== o.id);
   else if (o.op === 'orc') { const i = S.orc.findIndex(c => c.categoria === o.categoria); const c = {categoria: o.categoria, limite: Number(o.limite) || 0}; if (i >= 0) S.orc[i] = c; else S.orc.push(c); }
 }
@@ -504,24 +508,43 @@ function estat() {
   const h = isoHoje(), ym = h.slice(0, 7);
   let base = [1, 2, 3].map(k => gastosMes(mesAnt(ym, k))).filter(m => m.e > 0 || m.s > 0), pouco = false;
   if (!base.length) { base = [gastosMes(ym)]; pouco = true; }
-  const n = base.length, renda = base.reduce((a, m) => a + m.e, 0) / n, gasto = base.reduce((a, m) => a + m.s, 0) / n;
+  const decl = S.rotinas.filter(r => r.ativa && r.tipo === 'E' && r.valor > 0);
+  const n = base.length, renda = decl.length ? decl.reduce((a, r) => a + r.valor * vezesMes(r), 0) : base.reduce((a, m) => a + m.e, 0) / n, gasto = base.reduce((a, m) => a + m.s, 0) / n;
   const diaSal = Math.round(mediana(base.map(m => m.rowsE.length ? Number(m.rowsE.slice().sort((a, b) => b.valor - a.valor)[0].data.slice(8)) : 0).filter(Boolean))) || 5;
-  const rec = achaRecorrentes(base), ks = new Set(rec.map(r => r.k));
+  const rec = achaRecorrentes(base), ks = new Set(rec.map(r => r.k).concat(S.rotinas.filter(r => r.ativa).map(r => norm(r.desc))));
   const variavel = base.reduce((a, m) => a + m.rows.filter(r => !r.grupo && !ks.has(norm(r.desc || r.cat))).reduce((b, r) => b + r.valor, 0), 0) / n;
   return {base, n, pouco, renda, gasto, sobra: renda - gasto, diaSal, rec, variavel, ym};
 }
 const guardadoMeta = m => m.carteira ? Math.max(0, saldos().s[m.carteira] || 0) : 0;
 const reservado = exceto => S.metas.filter(m => !m.feita && m.id !== exceto).reduce((a, m) => a + guardadoMeta(m), 0);
-// simula os próximos 30 dias: saldo, previstos anotados, contas que costumam vir e gasto do dia a dia
+const SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+const freqTxt = r => r.freq === 'dia' ? 'todo dia' : r.freq === 'semana' ? 'toda ' + SEMANA[r.dia % 7] : 'todo dia ' + r.dia;
+const vezesMes = r => r.freq === 'dia' ? 30.4 : r.freq === 'semana' ? 4.35 : 1;
+// datas (de hoje até "ate") em que uma rotina acontece; se já foi lançada hoje, começa amanhã
+function ocorrencias(r, ate) {
+  const h = isoHoje(), out = [], jaHoje = vivas().some(x => !x.prev && x.data === h && norm(x.desc) === norm(r.desc));
+  for (let i = jaHoje ? 1 : 0; i <= 31; i++) {
+    const d = somaDias(h, i); if (d > ate) break; const dt = new Date(d + 'T12:00:00');
+    if (r.freq === 'dia' || (r.freq === 'semana' && dt.getDay() === Number(r.dia)) || (r.freq === 'mes' && dt.getDate() === Math.min(Number(r.dia) || 1, new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate()))) out.push(d);
+  }
+  return out;
+}
+// simula os próximos 30 dias: saldo, previstos anotados, rotinas, contas que costumam vir e gasto do dia a dia
 function simular(avail, compra, parcela) {
-  const E = estat(), h = isoHoje(), lim = somaDias(h, 30), ev = [];
+  const E = estat(), h = isoHoje(), lim = somaDias(h, 30), ev = [], rots = S.rotinas.filter(r => r.ativa && r.valor > 0);
   pendentes().filter(r => r.data <= lim).forEach(r => ev.push({d: r.data < h ? h : r.data, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc || r.cat, t: 'prev'}));
+  rots.forEach(r => ocorrencias(r, lim).forEach(d => {
+    if (r.freq === 'mes' && ev.some(x => x.t === 'prev' && norm(x.nome) === norm(r.desc) && Math.abs((new Date(x.d) - new Date(d)) / 864e5) <= 4)) return;   // já anotado como previsto
+    ev.push({d, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc, t: 'rot'}); }));
+  const rk = new Set(rots.map(r => norm(r.desc)));
   E.rec.forEach(c => {
+    if (rk.has(c.k)) return;
     let d = proxDia(c.dia); const mesmo = ev.some(x => norm(x.nome) === c.k);
     if (vivas().some(r => !r.prev && r.data <= h && r.data.slice(0, 7) === d.slice(0, 7) && norm(r.desc || r.cat) === c.k)) d = somaMes(d, 1);
     if (!mesmo && d <= lim) ev.push({d, v: -c.valor, nome: c.desc, t: 'prov'});
   });
-  if (E.renda > 0 && !ev.some(x => x.v > 0 && x.t === 'prev')) { const d = proxDia(E.diaSal); if (d <= lim) ev.push({d, v: E.renda, nome: 'renda do mês (estimada)', t: 'est'}); }
+  const fonte = rots.some(r => r.tipo === 'E') ? 'rotina' : ev.some(x => x.v > 0 && x.t === 'prev') ? 'previsto' : E.renda > 0 ? 'media' : 'nenhuma';
+  if (fonte === 'media') { const d = proxDia(E.diaSal); if (d <= lim) ev.push({d, v: E.renda, nome: 'renda do mês (estimada pela média)', t: 'est'}); }
   if (parcela) ev.push({d: somaDias(h, 28), v: -parcela, nome: '1ª parcela', t: 'parc'});
   let saldo = avail - compra, min = saldo, minDia = h;
   for (let i = 0; i <= 30; i++) {
@@ -529,8 +552,9 @@ function simular(avail, compra, parcela) {
     ev.filter(x => x.d === d).forEach(x => saldo += x.v);
     if (saldo < min) { min = saldo; minDia = d; }
   }
-  const reserva = E.gasto * .1, ver = min >= reserva ? 'ok' : min >= 0 ? 'aperta' : 'nao';
-  return {ini: avail - compra, fim: saldo, min, minDia, ver, ev: ev.sort((a, b) => a.d.localeCompare(b.d)), reserva};
+  const entra = ev.filter(x => x.v > 0).reduce((a, x) => a + x.v, 0), saiConta = -ev.filter(x => x.v < 0).reduce((a, x) => a + x.v, 0);
+  const reserva = Math.max(50, E.gasto * .1), ver = min >= reserva ? 'ok' : min >= 0 ? 'aperta' : 'nao';
+  return {ini: avail - compra, fim: saldo, min, minDia, ver, ev: ev.sort((a, b) => a.d.localeCompare(b.d)), reserva, entra, saiConta, saiVar: E.variavel, fonte};
 }
 const mesesAte = iso => Math.max(1, Math.round((new Date(iso + 'T12:00:00') - new Date(isoHoje() + 'T12:00:00')) / 864e5 / 30.4));
 function analisarMeta(m) {
@@ -541,13 +565,14 @@ function analisarMeta(m) {
   if (m.prazo && m.prazo > isoHoje() && falta > 0) gPrazo = Math.ceil(falta / mesesAte(m.prazo));
   const mesesT = gTranq ? Math.ceil(falta / gTranq) : null, mesesR = gRapido ? Math.ceil(falta / gRapido) : null;
   const recup = sobra > 0 ? Math.ceil(m.valor / sobra) : null;
-  let rec;
-  if (falta <= 0) rec = 'Você já tem o valor separado. Pode comprar sem mexer no resto do saldo.';
-  else if (vista.ver === 'ok') rec = recup <= 1 ? 'Dá para comprar à vista: o mês que vem ainda fecha com folga e você recupera o gasto em cerca de um mês.' : 'Dá para comprar à vista e o mês que vem fecha, mas você só recupera o valor em cerca de ' + recup + ' meses. Se não tiver pressa, guardar costuma sair melhor.';
-  else if (parcelado.ver === 'ok' && sobra > parc) rec = 'À vista aperta demais. Parcelado em ' + n + 'x de ' + brl(parc) + ' cabe na sua sobra mensal (confira se a loja cobra juros).';
-  else if (gTranq) rec = 'O mais seguro é guardar ' + brl(gTranq) + ' por mês: em ' + mesesT + (mesesT === 1 ? ' mês' : ' meses') + ' você compra sem apertar. Separe numa carteira só para isso.';
-  else rec = 'Hoje não sobra dinheiro no mês, então a compra não cabe sem cortar algo. Veja as dicas abaixo e tente abrir uma folga primeiro.';
-  return {E, x, guard, falta, avail, vista, n, parc, parcelado, sobra, gTranq, gRapido, gPrazo, mesesT, mesesR, recup, rec};
+  const alt = parcelado.ver !== 'nao' && sobra > parc ? 'Parcelando em ' + n + 'x de ' + brl(parc) + ' cabe no seu orçamento.' : gTranq ? 'Guardando ' + brl(gTranq) + ' por mês você compra em ' + mesesT + (mesesT === 1 ? ' mês.' : ' meses.') : 'Antes disso é preciso abrir folga no orçamento (veja as dicas).';
+  let titulo, texto, cor;
+  if (falta <= 0) { titulo = 'O valor já está separado'; cor = 'ok'; texto = 'Você já guardou o suficiente. Pode comprar sem mexer no resto do saldo.'; }
+  else if (vista.ver === 'ok') { titulo = 'Pode comprar à vista'; cor = 'ok'; texto = 'Mesmo pagando ' + brl(m.valor) + ' agora e as contas dos próximos 30 dias, seu saldo não fica abaixo de ' + brl(vista.min) + '.' + (recup > 1 ? ' Repor esse valor leva cerca de ' + recup + ' meses de sobra.' : ''); }
+  else if (vista.ver === 'aperta') { titulo = 'Dá, mas fica apertado'; cor = 'aperta'; texto = 'No pior dia (' + dt(vista.minDia).slice(0, 5) + ') sobrariam só ' + brl(vista.min) + '. ' + alt; }
+  else { titulo = 'Melhor não comprar à vista agora'; cor = 'nao'; texto = 'No dia ' + dt(vista.minDia).slice(0, 5) + ' faltariam ' + brl(-vista.min) + ' para cobrir as contas. ' + alt; }
+  const aviso = vista.fonte === 'nenhuma' ? 'Não sei quanto você recebe, então não contei nenhuma entrada. Cadastre sua renda em “O que se repete” (aba Metas e dicas) para eu calcular melhor.' : vista.fonte === 'media' ? 'Estou estimando sua renda pela média dos últimos meses. Cadastrar o que você recebe em “O que se repete” deixa a conta mais certa.' : '';
+  return {E, x, guard, falta, avail, vista, n, parc, parcelado, sobra, gTranq, gRapido, gPrazo, mesesT, mesesR, recup, titulo, texto, cor, aviso};
 }
 // dicas gerais de economia, escritas a partir dos seus números
 function dicas() {
@@ -651,7 +676,7 @@ function cartaoPrevisto() {
    <div class="leg"><span><i style="background:var(--lima)"></i>A receber</span><b class="lima">+${brl(p.pe)}</b></div>
    <div class="leg"><span><i style="background:var(--verm)"></i>A pagar</span><b>−${brl(p.ps)}</b></div></div>`;
 }
-const VSERV = 4;
+const VSERV = 5;
 const avisoServ = () => S.srvVer !== null && S.srvVer < VSERV ? `<div class="card" style="border-color:#5a1f22"><b style="color:var(--verm)">${ic('alert')} O código do Apps Script está desatualizado</b><div class="mut" style="font-size:13.5px;margin:6px 0 10px">Sem atualizar, parcelas, metas e previstos ficam errados na planilha. Abra o código novo, copie tudo, cole no Apps Script no lugar do antigo e crie uma nova versão em Implantar > Gerenciar implantações > editar. Depois rode a função <b style="color:#fff">atualizar</b> uma vez.</div><a class="btn pri full" href="https://raw.githubusercontent.com/miausicalproductions-sudo/apkfinanceiro/main/apps-script-Codigo.gs" target="_blank" rel="noopener">Abrir o código novo</a></div>` : '';
 function telaHome() {
   const x = saldos(), h = isoHoje(), nomes = Object.keys(x.s), mr = mesResumo(isoHoje().slice(0, 7)), pv = projecao();
@@ -767,6 +792,8 @@ function telaDicas() {
   return `<h1 class="title">Metas<br><span>e dicas.</span></h1>
   <div class="sec" style="margin-top:0"><h2>Suas metas</h2><button class="btn sm pri" data-a="novameta">${ic('plus')} Meta</button></div>
   ${ms.length ? ms.map(cartaoMeta).join('') : `<div class="card"><div class="empty" style="padding:14px 6px">Crie uma meta, por exemplo “ATH-M40x • R$ 800 • até março”. Eu calculo se dá para comprar à vista, parcelado ou guardando um pouco por mês, com base no que você ganha e gasta.</div><button class="btn full pri" data-a="novameta">Criar primeira meta</button></div>`}
+  <div class="sec"><h2>O que se repete</h2><button class="btn sm" data-a="novarotina">${ic('plus')} Rotina</button></div>
+  <div class="card" style="padding:6px 18px">${S.rotinas.length ? S.rotinas.map(r => `<div class="row" data-a="editrotina" data-id="${esc(r.id)}"><div class="ico" style="color:${r.tipo === 'E' ? 'var(--lima)' : '#ff8a3d'}">${ic(r.tipo === 'E' ? 'in' : 'bill')}</div><div class="t"><b>${esc(r.desc)}</b><span>${freqTxt(r)}${r.ativa ? '' : ' • pausada'}</span></div><div class="v ${r.tipo === 'E' ? 'lima' : ''}">${r.tipo === 'E' ? '+' : ''}${brl(r.valor)}</div></div>`).join('') : `<div class="empty" style="padding:16px 6px">Cadastre o que entra e sai com frequência (salário, ganhos do dia, academia, aluguel). Com isso eu prevejo os próximos dias e as metas ficam bem mais certas.</div>`}</div>
   <div class="sec"><h2>Dicas para você</h2></div>
   ${ds.map(d => `<div class="card"><div class="aviso" style="align-items:flex-start"><div class="ico" style="color:${d.cor};width:42px;height:42px;font-size:19px">${ic(d.ic)}</div><div style="flex:1"><b style="font-size:16px">${esc(d.t)}</b><div class="mut" style="font-size:13.5px;margin-top:4px">${esc(d.x)}</div></div></div></div>`).join('')}
   <div class="hint">As dicas são calculadas só com os seus lançamentos (média dos últimos meses, previstos e contas que se repetem). Quanto mais você anota, mais certas ficam. Não são recomendação financeira profissional.</div>`;
@@ -788,28 +815,66 @@ function abrirNovaMeta(id) {
 function abrirMeta(id) {
   const m = S.metas.find(x => x.id === id); if (!m) return;
   if (m.feita) return abrirNovaMeta(id);
-  const a = analisarMeta(m), cor = v => v === 'ok' ? 'var(--lima)' : v === 'aperta' ? '#f5c518' : 'var(--verm)';
-  const linhaEv = a.vista.ev.filter(e => e.v < 0).slice(0, 4).map(e => `${esc(e.nome)} ${brl(-e.v)} (${dt(e.d).slice(0, 5)})`).join(' • ');
-  const bloco = (t, v, txt) => `<div class="card" style="padding:14px 16px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center"><b>${t}</b>${v ? chip(v) : ''}</div><div class="mut" style="font-size:13.5px;margin-top:6px">${txt}</div></div>`;
-  const E = a.E, v = a.vista;
+  const a = analisarMeta(m), v = a.vista, E = a.E, cor = a.cor === 'ok' ? 'var(--lima)' : a.cor === 'aperta' ? '#f5c518' : 'var(--verm)';
+  const lin = (t, val, c) => `<div class="leg"><span>${t}</span><b ${c ? `style="color:${c}"` : ''}>${val}</b></div>`;
+  const evs = v.ev.filter(e => e.v < 0 && e.t !== 'parc').slice(0, 5).map(e => `${esc(e.nome)} ${brl(-e.v)} (${dt(e.d).slice(0, 5)})`).join(' • ');
   folha(`<h3 style="display:flex;align-items:center;gap:12px">${metaIco(m)}<span>${esc(m.nome)}</span></h3>
-  <div style="display:flex;justify-content:space-between;font-size:14px"><span class="mut">Valor</span><b>${brl(m.valor)}</b></div>
-  <div style="display:flex;justify-content:space-between;font-size:14px;margin:4px 0 8px"><span class="mut">Separado para essa meta</span><b>${brl(a.guard)}</b></div>
-  <div class="prog" style="margin:0 0 14px"><i style="width:${m.valor ? Math.min(100, Math.round(a.guard / m.valor * 100)) : 0}%"></i></div>
-  <div class="card" style="border-color:#3f5200;padding:14px 16px;margin-bottom:12px"><div class="lbl" style="color:var(--lima)">${ic('bulb')} Minha sugestão</div><div style="margin-top:6px;font-size:15px">${esc(a.rec)}</div></div>
-  ${bloco('Comprar à vista agora', a.falta > 0 ? v.ver : '', a.falta > 0 ? `Seu saldo livre iria de ${brl(a.avail)} para ${brl(v.ini)}. Nos próximos 30 dias, com ${linhaEv ? 'o que vem pela frente (' + linhaEv + ') e ' : ''}o gasto do dia a dia (~${brl(E.variavel)}/mês), o menor saldo seria <b style="color:${cor(v.ver)}">${brl(v.min)}</b> em ${dt(v.minDia).slice(0, 5)} e o mês fecharia em <b>${brl(v.fim)}</b>. ${v.ver === 'nao' ? 'Ou seja: o mês que vem não fecha.' : v.ver === 'aperta' ? 'Fecha, mas sem folga.' : 'O mês que vem fecha com folga.'}${E.sobra > 0 ? ' Você recuperaria o valor em ~' + a.recup + (a.recup === 1 ? ' mês' : ' meses') + ' de sobra (' + brl(E.sobra) + '/mês).' : ''}` : 'Já separado.')}
-  ${a.falta > 0 ? bloco('Parcelar em ' + a.n + 'x de ' + brl(a.parc), a.parcelado.ver, `Sem juros. A parcela pesa ${E.renda ? Math.round(a.parc / E.renda * 100) + '% da renda' : 'no orçamento'} e sua sobra mensal hoje é ${brl(E.sobra)}${E.sobra > a.parc ? (a.parcelado.ver === 'nao' ? ', mas seu saldo já ficaria negativo nos próximos 30 dias' : ', então cabe') : ', então não cabe sem cortar algo'}. Menor saldo em 30 dias: ${brl(a.parcelado.min)}. Confira na loja se há juros.`) : ''}
-  ${a.falta > 0 ? bloco('Guardar aos poucos', a.gTranq ? '' : 'nao', a.gTranq ? `Guardando <b>${brl(a.gTranq)}/mês</b> (60% da sobra) você compra em <b>${a.mesesT} ${a.mesesT === 1 ? 'mês' : 'meses'}</b>, ou em ${a.mesesR} se guardar ${brl(a.gRapido)}.${a.gPrazo ? ' Para chegar até ' + dt(m.prazo) + ' precisa de ' + brl(a.gPrazo) + '/mês' + (E.sobra >= a.gPrazo ? ' (cabe na sua sobra).' : ' (não cabe na sobra atual de ' + brl(E.sobra) + ').') : ''}` : 'Hoje não sobra dinheiro no mês. Veja as dicas para abrir folga.') : ''}
-  ${E.pouco ? '<div class="hint">Ainda tenho pouco histórico seu (menos de um mês completo), então os números são aproximados.</div>' : `<div class="hint">Base: média dos últimos ${E.n} ${E.n === 1 ? 'mês' : 'meses'}: ganhos ${brl(E.renda)}, gastos ${brl(E.gasto)}.${E.rec.length ? ' Contas que se repetem consideradas: ' + E.rec.slice(0, 4).map(r => esc(r.desc)).join(', ') + '.' : ''}</div>`}
-  <div style="display:grid;gap:8px;margin-bottom:10px">
-   ${a.falta > 0 && a.gTranq ? `<button class="btn pri full" data-a="separar" data-id="${esc(m.id)}" data-v="${a.gTranq}">Separar ${brl(a.gTranq)} agora numa carteira só dessa meta</button>` : ''}
+  <div class="card" style="border-color:${cor};padding:16px 18px;margin-bottom:12px"><div style="font-size:21px;font-weight:600;color:${cor};letter-spacing:-.02em">${esc(a.titulo)}</div><div style="margin-top:8px;font-size:15px;line-height:1.4">${esc(a.texto)}</div></div>
+  ${a.aviso ? `<div class="hint" style="margin:0 6px 12px;color:#f5c518">${esc(a.aviso)}</div>` : ''}
+  <div class="card" style="padding:8px 18px;margin-bottom:12px">
+   ${lin('Preço', brl(m.valor))}${a.guard > 0 ? lin('Já separado', brl(a.guard)) : ''}
+   ${lin('Seu saldo livre hoje', brl(a.avail))}
+   ${lin('Depois de comprar', brl(v.ini), v.ini < 0 ? 'var(--verm)' : '')}
+   ${lin('Entram nos próximos 30 dias', '+' + brl(v.entra), v.entra ? 'var(--lima)' : '')}
+   ${lin('Saem nos próximos 30 dias', '−' + brl(v.saiConta + v.saiVar))}
+   ${lin('Pior dia (' + dt(v.minDia).slice(0, 5) + ')', brl(v.min), v.min < 0 ? 'var(--verm)' : '')}
+  </div>
+  ${a.falta > 0 ? `<div class="card" style="padding:12px 18px;margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center"><span>Parcelar em ${a.n}x de ${brl(a.parc)}</span>${chip(a.parcelado.ver)}</div>
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px"><span>${a.gTranq ? 'Guardar ' + brl(a.gTranq) + '/mês: ' + a.mesesT + (a.mesesT === 1 ? ' mês' : ' meses') : 'Guardar aos poucos'}</span>${a.gTranq ? '' : chip('nao')}</div>
+   ${a.gPrazo ? `<div class="mut" style="font-size:12.5px;margin-top:8px">Para chegar até ${dt(m.prazo)} precisa de ${brl(a.gPrazo)}/mês${E.sobra >= a.gPrazo ? ' (cabe na sua sobra)' : ' (não cabe na sua sobra de ' + brl(E.sobra) + ')'}.</div>` : ''}</div>` : ''}
+  <div style="display:grid;gap:8px;margin-bottom:12px">
+   ${a.falta > 0 && a.gTranq ? `<button class="btn pri full" data-a="separar" data-id="${esc(m.id)}" data-v="${a.gTranq}">Separar ${brl(a.gTranq)} numa carteira só dessa meta</button>` : ''}
    <button class="btn bco full" data-a="comprei" data-id="${esc(m.id)}">Já comprei (lançar a saída)</button></div>
+  <details class="card" style="padding:12px 18px;margin-bottom:12px"><summary style="cursor:pointer;font-weight:600">Como calculei</summary>
+   <div class="mut" style="font-size:13px;margin-top:10px;line-height:1.5">
+   Renda mensal considerada: ${brl(E.renda)} (${S.rotinas.some(r => r.ativa && r.tipo === 'E') ? 'o que você cadastrou em “O que se repete”' : 'média dos últimos ' + E.n + (E.n === 1 ? ' mês' : ' meses')}).<br>
+   Gasto médio por mês: ${brl(E.gasto)}; gasto do dia a dia (fora contas fixas e parcelas): ${brl(E.variavel)}/mês.<br>
+   Contas e entradas que entraram na conta: ${evs || 'nenhuma nos próximos 30 dias'}.<br>
+   O saldo é simulado dia a dia por 30 dias. Fica “Dá” quando o pior dia ainda deixa pelo menos ${brl(v.reserva)}.${E.pouco ? '<br>Ainda tenho pouco histórico seu, então os números são aproximados.' : ''}</div></details>
   <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Fechar</button><button class="btn" style="flex:1" data-a="editmeta" data-id="${esc(m.id)}">Editar meta</button></div>`);
 }
+/* ---- rotinas: o que se repete (alimenta as previsões; não lança nada sozinho) ---- */
+function abrirRotina(id) {
+  const r = id ? S.rotinas.find(x => x.id === id) : null; rotForm = {id: r ? r.id : uid(), tipo: r ? r.tipo : 'E', freq: r ? r.freq : 'dia'};
+  folha(`<h3>${r ? 'Editar' : 'Nova'} rotina</h3>
+  <div class="seg" id="rtipo"><button class="${rotForm.tipo === 'E' ? 'on' : ''}" data-v="E">Eu recebo</button><button class="${rotForm.tipo === 'S' ? 'on' : ''}" data-v="S">Eu pago</button></div>
+  <div class="f"><label>O que é</label><input id="rd" value="${esc(r ? r.desc : '')}" placeholder="salário, corridas, academia, aluguel…" autocomplete="off"></div>
+  <div class="f"><label>Valor de cada vez</label><input id="rv" inputmode="decimal" value="${r ? String(r.valor).replace('.', ',') : ''}" placeholder="0,00" style="font-size:26px;font-weight:600;padding:14px 18px"></div>
+  <div class="two"><div class="f"><label>Quando</label><select id="rf"><option value="dia" ${rotForm.freq === 'dia' ? 'selected' : ''}>Todo dia</option><option value="semana" ${rotForm.freq === 'semana' ? 'selected' : ''}>Toda semana</option><option value="mes" ${rotForm.freq === 'mes' ? 'selected' : ''}>Todo mês</option></select></div>
+   <div class="f" id="rdia"></div></div>
+  <div class="hint">Isso só ajuda nas previsões e nas metas. Não lança nada sozinho: continue anotando o que realmente entrou e saiu.</div>
+  <div style="display:flex;gap:10px">${r ? `<button class="btn no" data-a="rotdel" data-id="${esc(r.id)}" aria-label="Apagar">${ic('trash')}</button>` : `<button class="btn" data-a="fechar">Cancelar</button>`}<button class="btn pri" style="flex:1" data-a="okrotina">Salvar</button></div>`);
+  const dia = () => { const f = $('#rf').value; $('#rdia').innerHTML = f === 'dia' ? '' : f === 'semana' ? `<label>Dia da semana</label><select id="rw">${SEMANA.map((s, i) => `<option value="${i}" ${r && r.freq === 'semana' && r.dia === i ? 'selected' : ''}>${s}</option>`).join('')}</select>` : `<label>Dia do mês</label><input id="rw" inputmode="numeric" value="${r && r.freq === 'mes' ? r.dia : ''}" placeholder="5">`; };
+  $('#rf').addEventListener('change', dia); dia();
+  $('#rtipo').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; rotForm.tipo = b.dataset.v; $('#rtipo').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+}
+let rotForm = {};
 
 /* ============ folhas (formulários) ============ */
-function folha(html) { fechar(); const d = document.createElement('div'); d.className = 'sheetbg'; d.id = 'sheet'; d.innerHTML = `<div class="sheet">${html}</div>`; d.addEventListener('click', e => { if (e.target === d) fechar(); }); $('#layer').appendChild(d); return d; }
-function fechar() { const s = $('#sheet'); if (s) s.remove(); }
+let sheetPush = false, skipPop = 0;
+function rmSheet() { const s = $('#sheet'); if (s) s.remove(); }
+function folha(html) {
+  rmSheet(); const d = document.createElement('div'); d.className = 'sheetbg'; d.id = 'sheet'; d.innerHTML = `<div class="sheet">${html}</div>`;
+  d.addEventListener('click', e => { if (e.target === d) fechar(); }); $('#layer').appendChild(d);
+  const sh = d.firstChild; let y0 = null, dy = 0;       // arrastar para baixo fecha
+  sh.addEventListener('touchstart', e => { if (sh.scrollTop <= 0 && e.touches.length === 1) { y0 = e.touches[0].clientY; dy = 0; } else y0 = null; }, {passive: true});
+  sh.addEventListener('touchmove', e => { if (y0 == null) return; dy = e.touches[0].clientY - y0; if (dy > 0) { sh.style.transition = 'none'; sh.style.transform = 'translateY(' + dy + 'px)'; } else { dy = 0; sh.style.transform = ''; } }, {passive: true});
+  sh.addEventListener('touchend', () => { if (y0 == null) return; y0 = null; if (dy > 100) fechar(); else { sh.style.transition = 'transform .2s'; sh.style.transform = ''; } });
+  if (!sheetPush) { try { history.pushState({sheet: 1}, ''); sheetPush = true; } catch (e) {} }     // botão voltar do Android fecha a janela
+  return d;
+}
+function fechar() { rmSheet(); if (sheetPush) { sheetPush = false; skipPop++; try { history.back(); } catch (e) { skipPop--; } } }
+window.addEventListener('popstate', () => { if (skipPop > 0) { skipPop--; return; } if ($('#sheet')) { rmSheet(); sheetPush = false; } });
 const opts = (arr, sel) => arr.map(v => `<option ${v === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
 let form = {};
 function abrirNovo(prev, scan) {
@@ -974,6 +1039,15 @@ async function acao(a, el) {
   else if (a === 'pvmodo') { S.pv = d.v; render(); }
   else if (a === 'pvm') { S.pvm = Math.max(0, (S.pvm || 0) + Number(d.d)); render(); }
   else if (a === 'qenviar') await enviarQuick();
+  else if (a === 'novarotina') abrirRotina();
+  else if (a === 'editrotina') abrirRotina(d.id);
+  else if (a === 'rotdel') { fechar(); await fazer([{op: 'rotinadel', id: d.id}], 'Rotina apagada'); }
+  else if (a === 'okrotina') {
+    const desc = $('#rd').value.trim(), v = num($('#rv').value), f = $('#rf').value, w = $('#rw') ? parseInt($('#rw').value) : 0;
+    if (!desc) return aviso('Diga o que é.', 'bad'); if (!(v > 0)) return aviso('Digite o valor.', 'bad');
+    if (f === 'mes' && !(w >= 1 && w <= 31)) return aviso('Digite o dia do mês (1 a 31).', 'bad');
+    fechar(); await fazer([{op: 'rotina', id: rotForm.id, descricao: desc, valor: v, tipo: rotForm.tipo, freq: f, dia: f === 'dia' ? 0 : w, ativa: 1}], 'Rotina salva');
+  }
   else if (a === 'novameta') abrirNovaMeta();
   else if (a === 'editmeta') abrirNovaMeta(d.id);
   else if (a === 'meta') abrirMeta(d.id);
