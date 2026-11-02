@@ -141,7 +141,7 @@ a{color:var(--lima)}
 .chipsw{border:0;border-radius:999px;padding:7px 12px;font:inherit;font-weight:600;font-size:12.5px;background:rgba(255,255,255,.14);color:var(--tx);backdrop-filter:blur(8px)}.chipsw.emp{background:var(--azul);color:var(--tx)}
 .dist .f label{font-size:13px}.dist select,.dist input{font-size:15px}.stt{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}.stt.ok{background:var(--lima);color:var(--on)}.stt.er{background:var(--verm);color:var(--tx)}
 .pbub{position:absolute;right:9px;bottom:76px;width:44px;height:44px;border-radius:50%;border:2px solid var(--bg);background:var(--lima);color:var(--on);font:700 17px/1 inherit;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.28);touch-action:manipulation;user-select:none;-webkit-user-select:none}.pbub.emp{background:var(--azul);color:var(--tx)}
-.pmenu{position:fixed;right:14px;bottom:calc(var(--bot) + 134px);z-index:30;background:var(--card2);border:1px solid var(--line2);border-radius:22px;padding:6px;box-shadow:0 14px 40px rgba(255,255,255,.55);min-width:170px}.pmenu button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--tx);font:inherit;font-weight:600;padding:12px 14px;border-radius:16px}.pmenu button.on{background:var(--card)}.pmenu i{width:12px;height:12px;border-radius:50%;display:block}
+.pmenu{position:fixed;right:14px;bottom:calc(var(--bot) + 134px);z-index:30;background:var(--card2);border:1px solid var(--line2);border-radius:22px;padding:6px;box-shadow:0 14px 40px rgba(255,255,255,.55);min-width:170px}.pmenu button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--tx);font:inherit;font-weight:600;padding:12px 14px;border-radius:16px}.pmenu button.on{background:var(--card)}.pmenu i{width:28px;height:28px;border-radius:50%;display:block;flex:none}
 
 /* ===== tema pastel (versão iPhone) ===== */
 body{background:var(--bg)}
@@ -231,6 +231,17 @@ const num = t => { let s = String(t).trim().replace(/^R\$\s*/i, ''); const neg =
   const v = parseFloat(s); return isNaN(v) ? null : (neg ? -v : v); };
 const S = { cfg: {url: '', chave: ''}, linhas: {}, carteiras: [], orc: [], metas: [], rotinas: [], socios: [], repasses: [], desde: 0, fila: [], tab: 'home', mes: isoHoje().slice(0, 7), mview: 'rd', pv: 'mes', pvm: 0, srvVer: null, pf: '', todos: false, rede: null };
 
+// foto da bolinha de cada perfil (fica só neste aparelho)
+const fotoDe = p => { try { return localStorage.getItem(p === 'emp' ? 'e_fin_foto' : 'fin_foto') || ''; } catch (e) { return ''; } };
+function fotoQuadrada(file) {
+  return new Promise((res, rej) => { const img = new Image(), u = URL.createObjectURL(file);
+    img.onload = () => { const n = 160, k = Math.min(img.width, img.height), c = document.createElement('canvas'); c.width = c.height = n;
+      c.getContext('2d').drawImage(img, (img.width - k) / 2, (img.height - k) / 2, k, k, 0, 0, n, n); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg', .85)); };
+    img.onerror = () => rej(new Error('Não consegui abrir essa imagem.')); img.src = u; });
+}
+document.addEventListener('change', async e => { const t = e.target; if (!t || t.dataset.fp === undefined) return; const f = t.files && t.files[0]; if (!f) return;
+  try { const d = await fotoQuadrada(f); localStorage.setItem(t.dataset.fp === 'emp' ? 'e_fin_foto' : 'fin_foto', d); render(); aviso('Foto salva', 'good'); } catch (er) { aviso(er.message, 'bad'); } });
+const avatarCss = p => fotoDe(p) ? `background-image:url(${fotoDe(p)});background-size:cover;background-position:center;color:transparent` : '';
 // troca instantânea entre conta pessoal e da empresa (cada uma tem seus dados guardados à parte)
 async function trocarPerfil(p, irAjustes) {
   const novo = p === 'emp'; if (novo === EMP) return;
@@ -247,7 +258,7 @@ async function trocarPerfil(p, irAjustes) {
 }
 function menuPerfil() {
   document.querySelectorAll('.pmenu').forEach(x => x.remove()); const m = document.createElement('div'); m.className = 'pmenu';
-  m.innerHTML = `<button class="${EMP ? '' : 'on'}" data-p=""><i style="background:var(--lima)"></i>Pessoal</button><button class="${EMP ? 'on' : ''}" data-p="emp"><i style="background:var(--azul)"></i>Empresa</button>`;
+  m.innerHTML = `<button class="${EMP ? '' : 'on'}" data-p=""><i style="background:var(--lima);${avatarCss('')}"></i>Pessoal</button><button class="${EMP ? 'on' : ''}" data-p="emp"><i style="background:var(--azul);${avatarCss('emp')}"></i>Empresa</button>`;
   m.addEventListener('click', e => { const b = e.target.closest('button'); if (b) trocarPerfil(b.dataset.p); }); $('#layer').appendChild(m);
   setTimeout(() => document.addEventListener('pointerdown', function f(e) { if (!e.target.closest('.pmenu')) { m.remove(); document.removeEventListener('pointerdown', f); } }), 50);
 }
@@ -827,6 +838,7 @@ function cartaoEmpresa() {
   const rp = S.repasses.slice().reverse().slice(0, 12);
   return `<div class="sec" style="margin-top:0"><h2>Conta</h2></div><div class="card"><div class="seg" id="sper"><button class="${EMP ? '' : 'on'}" data-a="perfil" data-p="">Pessoal</button><button class="${EMP ? 'on' : ''}" data-a="perfil" data-p="emp">Empresa</button></div>
    <div class="hint" style="margin:10px 0 0">${EMP ? 'Você está vendo o caixa da empresa (outra planilha). Cada conta tem o seu link e a sua chave.' : 'Troque para Empresa para ver o caixa da empresa.'}</div></div>`
+  + `<div class="sec"><h2>Foto da bolinha</h2></div><div class="card" style="padding:6px 18px">${[['', 'Pessoal', 'var(--lima)'], ['emp', 'Empresa', 'var(--azul)']].map(([k, n, c]) => `<div class="row" style="cursor:default"><span class="pbub" style="position:static;flex:none;background:${c};${avatarCss(k)}">${n[0]}</span><div class="t"><b>${n}</b><span>${fotoDe(k) ? 'foto escolhida' : 'sem foto (mostra a letra)'}</span></div>${fotoDe(k) ? `<button class="btn sm" data-a="tirarfoto" data-p="${k}">Tirar</button>` : ''}<label class="btn sm" style="margin:0">Escolher<input type="file" accept="image/*" data-fp="${k}" style="display:none"></label></div>`).join('')}</div>`
   + (EMP ? `<div class="sec"><h2>Sócios</h2><button class="btn sm" data-a="novosocio">${ic('plus')} Sócio</button></div>
    <div class="card" style="padding:6px 18px">${S.socios.length ? S.socios.map(x => `<div class="row" data-a="editsocio" data-n="${esc(x.nome)}"><div class="ico">${ic('bank')}</div><div class="t"><b>${esc(x.nome)}</b><span>${x.ok ? 'conectado ao app dele(a)' : 'falta o link e a chave'}</span></div></div>`).join('') : '<div class="empty">Cadastre cada sócio com o link e a chave do app pessoal dele(a). É assim que o salário chega sozinho na conta de cada um.</div>'}</div>
    <div class="sec"><h2>Repasses</h2></div>
@@ -861,7 +873,7 @@ function render() {
   $('#dock').innerHTML = `<nav>${[['home', 'home', 'Início'], ['prev', 'cal', 'Previstos'], ['dicas', 'bulb', 'Metas e dicas'], ['mes', 'chart', 'Mês'], ['mais', 'sliders', 'Ajustes']]
     .map(([k, i, n]) => `<button class="${t === k ? 'on' : ''}" data-a="tab" data-t="${k}" aria-label="${n}">${ic(i)}</button>`).join('')}</nav>
     <button class="fab" data-a="novo" data-p="${t === 'prev' ? '1' : ''}" aria-label="Novo lançamento">${ic('plus')}</button>
-    ${EMPON ? `<button class="pbub ${EMP ? 'emp' : ''}" id="pbub" aria-label="Trocar entre conta pessoal e da empresa">${EMP ? 'E' : 'P'}</button>` : ''}`;
+    ${EMPON ? `<button class="pbub ${EMP ? 'emp' : ''}" id="pbub" style="${avatarCss(EMP ? 'emp' : '')}" aria-label="Trocar entre conta pessoal e da empresa">${EMP ? 'E' : 'P'}</button>` : ''}`;
 }
 
 /* ============ telas: metas e dicas ============ */
@@ -1148,6 +1160,7 @@ async function acao(a, el) {
   else if (a === 'receber') abrirReceber(d.id);
   else if (a === 'orc') abrirOrc();
   else if (a === 'perfil') await trocarPerfil(d.p || '');
+  else if (a === 'tirarfoto') { try { localStorage.removeItem(d.p === 'emp' ? 'e_fin_foto' : 'fin_foto'); } catch (e) {} render(); }
   else if (a === 'empon') { EMPON = true; try { localStorage.setItem('fin_emp', '1'); } catch (e) {} await trocarPerfil('emp', true); }
   else if (a === 'distribuir') abrirDistribuir(d.id);
   else if (a === 'distcalc') { const pc = Math.min(100, Math.max(0, num($('#dres').value) || 0)), n = S.socios.length, parte = Math.floor(distF.livre * (100 - pc) / 100 / n * 100) / 100;
