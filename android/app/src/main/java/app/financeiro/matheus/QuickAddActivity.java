@@ -40,7 +40,7 @@ public class QuickAddActivity extends Activity {
     private TextView botao(String t, int cor, int txt) {
         TextView b = new TextView(this);
         b.setText(t); b.setTextColor(txt); b.setTextSize(15); b.setTypeface(Typeface.DEFAULT_BOLD);
-        b.setGravity(Gravity.CENTER); b.setBackground(fundo(cor, 14, 0));
+        b.setGravity(Gravity.CENTER); b.setBackground(fundo(cor, 40, 0));
         b.setPadding(dp(16), dp(13), dp(16), dp(13));
         return b;
     }
@@ -56,7 +56,7 @@ public class QuickAddActivity extends Activity {
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(fundo(Color.parseColor("#17212b"), 22, Color.parseColor("#2b3a4a")));
+        card.setBackground(fundo(Color.parseColor("#0e0e0e"), 28, Color.parseColor("#1f1f1f")));
         card.setPadding(dp(18), dp(16), dp(18), dp(16));
         card.setClickable(true);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP);
@@ -64,23 +64,23 @@ public class QuickAddActivity extends Activity {
         root.addView(card, lp);
 
         TextView titulo = new TextView(this);
-        titulo.setText("Lançar"); titulo.setTextColor(Color.parseColor("#e6edf3")); titulo.setTextSize(18); titulo.setTypeface(Typeface.DEFAULT_BOLD);
+        titulo.setText("Lançar"); titulo.setTextColor(Color.parseColor("#ffffff")); titulo.setTextSize(22); titulo.setTypeface(Typeface.DEFAULT_BOLD);
         card.addView(titulo);
 
         TextView dica = new TextView(this);
         dica.setText("25 mercado  ·  +50 mãe pix  ·  300 tv 10x  ·  t 100 pix din");
-        dica.setTextColor(Color.parseColor("#8b9bb0")); dica.setTextSize(12);
+        dica.setTextColor(Color.parseColor("#8c8c8c")); dica.setTextSize(12);
         dica.setPadding(0, dp(2), 0, dp(10));
         card.addView(dica);
 
         et = new EditText(this);
         et.setHint("valor + descrição");
-        et.setHintTextColor(Color.parseColor("#5d6b7c"));
+        et.setHintTextColor(Color.parseColor("#5a5a5a"));
         et.setTextColor(Color.WHITE); et.setTextSize(20);
         et.setSingleLine(true);
         et.setInputType(InputType.TYPE_CLASS_TEXT);
         et.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        et.setBackground(fundo(Color.parseColor("#0f1720"), 14, Color.parseColor("#2b3a4a")));
+        et.setBackground(fundo(Color.parseColor("#161616"), 18, Color.parseColor("#2a2a2a")));
         et.setPadding(dp(14), dp(12), dp(14), dp(12));
         et.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             public boolean onEditorAction(TextView v, int a, KeyEvent e) { enviar(); return true; }
@@ -88,7 +88,7 @@ public class QuickAddActivity extends Activity {
         card.addView(et);
 
         msg = new TextView(this);
-        msg.setTextColor(Color.parseColor("#8b9bb0")); msg.setTextSize(14);
+        msg.setTextColor(Color.parseColor("#8c8c8c")); msg.setTextSize(14);
         msg.setPadding(0, dp(10), 0, 0);
         msg.setVisibility(View.GONE);
         card.addView(msg);
@@ -96,9 +96,9 @@ public class QuickAddActivity extends Activity {
         LinearLayout linha = new LinearLayout(this);
         linha.setOrientation(LinearLayout.HORIZONTAL);
         linha.setPadding(0, dp(14), 0, 0);
-        TextView cancelar = botao("Cancelar", Color.parseColor("#223142"), Color.parseColor("#c3cfdd"));
+        TextView cancelar = botao("Cancelar", Color.parseColor("#161616"), Color.WHITE);
         cancelar.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { finish(); } });
-        btnOk = botao("Lançar", Color.parseColor("#3b82f6"), Color.WHITE);
+        btnOk = botao("Lançar", Color.parseColor("#c5f400"), Color.BLACK);
         btnOk.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { enviar(); } });
         LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.6f);
@@ -121,9 +121,9 @@ public class QuickAddActivity extends Activity {
     private void enviar() {
         if (ocupado) return;
         final String texto = et.getText().toString().trim();
-        if (texto.isEmpty()) { aviso("Digite o valor e o que foi. Ex: 25 mercado", Color.parseColor("#f0b429")); return; }
+        if (texto.isEmpty()) { aviso("Digite o valor e o que foi. Ex: 25 mercado", Color.parseColor("#ff9a3d")); return; }
         ocupado = true; btnOk.setAlpha(0.5f);
-        aviso("Enviando…", Color.parseColor("#8b9bb0"));
+        aviso("Enviando…", Color.parseColor("#8c8c8c"));
         final String id = "x" + UUID.randomUUID().toString().replace("-", "").substring(0, 7);
         new Thread(new Runnable() { public void run() {
             try {
@@ -131,12 +131,12 @@ public class QuickAddActivity extends Activity {
                 if (r.has("erro")) { falha(r.optString("erro")); return; }
                 Api.guardarSaldo(QuickAddActivity.this, r);
                 FinWidget.atualizarTodos(QuickAddActivity.this);
-                final String t = "✅ " + r.optString("resumo") + "\nTotal: " + Api.reais(r.optDouble("total"));
-                ui.post(new Runnable() { public void run() { aviso(t, Color.parseColor("#4cd07d")); } });
+                final String t = r.optString("resumo") + "\nTotal: " + Api.reais(r.optDouble("total"));
+                ui.post(new Runnable() { public void run() { aviso(t, Color.parseColor("#c5f400")); } });
                 ui.postDelayed(new Runnable() { public void run() { finish(); } }, 1300);
             } catch (IOException e) {
                 Api.enfileirar(QuickAddActivity.this, id, texto);
-                ui.post(new Runnable() { public void run() { aviso("📴 Sem conexão: guardei e envio quando voltar.", Color.parseColor("#f0b429")); } });
+                ui.post(new Runnable() { public void run() { aviso("Sem conexão: guardei e envio quando voltar.", Color.parseColor("#ff9a3d")); } });
                 ui.postDelayed(new Runnable() { public void run() { finish(); } }, 1600);
             } catch (Exception e) {
                 falha(e.getMessage() == null ? "Erro ao enviar." : e.getMessage());
@@ -145,6 +145,6 @@ public class QuickAddActivity extends Activity {
     }
 
     private void falha(final String m) {
-        ui.post(new Runnable() { public void run() { ocupado = false; btnOk.setAlpha(1f); aviso("⚠️ " + m, Color.parseColor("#ff6b6b")); } });
+        ui.post(new Runnable() { public void run() { ocupado = false; btnOk.setAlpha(1f); aviso(m, Color.parseColor("#ff4d4d")); } });
     }
 }

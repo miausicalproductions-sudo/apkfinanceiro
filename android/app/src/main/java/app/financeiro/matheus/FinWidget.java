@@ -75,7 +75,7 @@ public class FinWidget extends AppWidgetProvider {
                 v.setTextViewText(R.id.wTotal, Float.isNaN(total) ? "—" : Api.reais(total));
                 String sub = Api.carteiras(c);
                 int pend = Api.pendentes(c);
-                if (pend > 0) sub += (sub.isEmpty() ? "" : "  ·  ") + "⏳ " + pend + " a enviar";
+                if (pend > 0) sub += (sub.isEmpty() ? "" : "  ·  ") + pend + " a enviar";
                 v.setTextViewText(R.id.wSub, sub.isEmpty() ? "Toque para atualizar" : sub);
                 long q = Api.quando(c);
                 v.setTextViewText(R.id.wHora, q == 0 ? "" : new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(q)));
