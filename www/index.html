@@ -877,6 +877,14 @@ function fechar() { rmSheet(); if (sheetPush) { sheetPush = false; skipPop++; tr
 window.addEventListener('popstate', () => { if (skipPop > 0) { skipPop--; return; } if ($('#sheet')) { rmSheet(); sheetPush = false; } });
 const opts = (arr, sel) => arr.map(v => `<option ${v === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
 let form = {};
+const repetirSel = cur => `<div class="f" id="grep"><label>Repetir</label><select id="frep"><option value="">Não repete</option><option value="dia" ${cur === 'dia' ? 'selected' : ''}>Todo dia</option><option value="semana" ${cur === 'semana' ? 'selected' : ''}>Toda semana</option><option value="mes" ${cur === 'mes' ? 'selected' : ''}>Todo mês</option></select><div class="hint" style="margin:6px 4px 0">Marcando, a previsão e as metas passam a contar com isso nos próximos dias. Só ajuda a prever: não lança nada sozinho.</div></div>`;
+const achaRot = (tipo, desc) => S.rotinas.find(x => x.tipo === tipo && norm(x.desc) === norm(desc));
+function opRepetir(tipo, desc, valor, data, freq, oldId) {      // gera a op da rotina conforme o select "Repetir"
+  const ex = oldId ? S.rotinas.find(x => x.id === oldId) : achaRot(tipo, desc);
+  if (!freq) return ex ? [{op: 'rotinadel', id: ex.id}] : [];
+  const dt0 = new Date((data || isoHoje()) + 'T12:00:00'), dia = freq === 'dia' ? 0 : freq === 'semana' ? dt0.getDay() : dt0.getDate();
+  return [{op: 'rotina', id: ex ? ex.id : uid(), descricao: desc, valor, tipo, freq, dia, ativa: 1}];
+}
 function abrirNovo(prev, scan) {
   form = {tipo: 'S', url: '', img: '', catTocada: false, vmode: 'total', prev: !!prev};
   const cs = S.carteiras.map(c => c.nome);
@@ -893,10 +901,11 @@ function abrirNovo(prev, scan) {
    <div class="f"><label>Vence todo dia</label><input id="fdia" inputmode="numeric" placeholder="${Number(isoHoje().slice(8))}"></div>
    <div id="gpv" style="grid-column:span 2;margin:0 6px 6px;font-weight:600;color:var(--lima)"></div><div class="hint" id="gph" style="grid-column:span 2;margin:-4px 6px 8px">Ex.: parcela atual 3 de 10 = a 3ª é paga na data escolhida e as 7 restantes viram previstos todo mês no dia do vencimento (com aviso). Deixe em branco se está começando agora.</div></div>
   <div id="fprod"></div>
+  ${repetirSel('')}
   <div class="f" id="gcomp"><label>Comprovante (foto, print ou PDF)</label><label class="btn full" style="margin:0;justify-content:flex-start;padding:15px 18px">${ic('scan')} Escolher foto ou arquivo<input id="ff" type="file" accept="image/*,application/pdf" style="display:none"></label><div class="hint" id="fh" style="margin:8px 6px 0">Eu leio o valor e preencho para você.</div></div>
   <div class="hint" style="margin-top:0">${prev ? 'Este lançamento fica em Previstos e só mexe no saldo quando você confirmar.' : 'Com uma data futura, o lançamento fica em Previstos e só mexe no saldo quando chegar o dia.'}</div>
   <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Cancelar</button><button class="btn pri" style="flex:1" data-a="salvarnovo">Salvar</button></div>`);
-  const gp = () => { const n = parseInt($('#fn').value) || 1; $('#gpar').style.display = form.tipo === 'S' && n > 1 ? '' : 'none'; };
+  const gp = () => { const n = parseInt($('#fn').value) || 1; $('#grep').style.display = form.tipo === 'T' || (form.tipo === 'S' && n > 1) ? 'none' : ''; $('#gpar').style.display = form.tipo === 'S' && n > 1 ? '' : 'none'; };
   const pv = () => { const v = num($('#fv').value), n = parseInt($('#fn').value) || 1, pa = parseInt($('#fpa').value) || 0; const el = $('#gpv'); if (!el) return;
     if (!(v > 0) || n < 2) { el.textContent = ''; return; } const per = form.vmode === 'parc' ? v : r2(v / n);
     el.textContent = n + 'x de ' + brl(per) + ' (total ' + brl(per * n) + ')' + (pa >= 1 && pa < n ? ' • a ' + pa + 'ª entra agora e faltam ' + (n - pa) : ''); };
@@ -911,7 +920,7 @@ function abrirNovo(prev, scan) {
   $('#sg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; form.tipo = b.dataset.v;
     $('#sg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     const T = form.tipo === 'T'; $('#gd').style.display = T ? '' : 'none'; $('#gcat').style.display = T ? 'none' : ''; $('#gn').style.display = form.tipo === 'S' ? '' : 'none'; gp();
-    $('#lc').textContent = T ? 'Da conta' : 'Conta'; $('#gcomp').style.display = T ? 'none' : ''; });
+    $('#lc').textContent = T ? 'Da conta' : 'Conta'; $('#gcomp').style.display = T ? 'none' : ''; gp(); });
   $('#ff').addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return; $('#fh').textContent = 'Lendo o comprovante…';
     try { const r = await enviarArquivo(f); form.url = r.url;
@@ -931,7 +940,9 @@ async function salvarNovo() {
       if (op.n > 1 && pa >= 1 && pa <= op.n) { op.pAtual = pa; const dia = parseInt($('#fdia').value); if (dia >= 1 && dia <= 31) op.dia = dia; } }
     if (tipo === 'S' && op.n > 1) op.valor = op.pAtual ? (form.vmode === 'parc' ? v : r2(v / op.n)) : (form.vmode === 'parc' ? r2(v * op.n) : v);
     if (form.url) op.comprovante = form.url; if (form.img && tipo === 'S') op.imagem = form.img; if (form.prev || data > isoHoje()) op.previsto = 1; }
-  fechar(); await fazer([op], op.pAtual ? 'Parcela ' + op.pAtual + '/' + op.n + ' lançada' : 'Lançado');
+  const ops = [op], fr = $('#frep') ? $('#frep').value : '';
+  if (fr && tipo !== 'T' && !(op.n > 1)) { if (!desc) return aviso('Escreva uma descrição para poder repetir (ex.: salário, corridas).', 'bad'); ops.push(...opRepetir(tipo, desc, v, data, fr)); }
+  fechar(); await fazer(ops, op.pAtual ? 'Parcela ' + op.pAtual + '/' + op.n + ' lançada' : fr ? 'Lançado e repetindo' : 'Lançado');
   if (tipo === 'S' && !op.imagem && querProduto({tipo, descricao: desc})) fotoDepois(op.id, desc);
 }
 function reduzir(file) {
@@ -964,6 +975,7 @@ function abrirDet(id) {
    <div class="f"><label>Conta</label><select id="ew">${opts(cs, r.cart)}</select></div></div>
   ${r.grupo ? `<div class="hint" style="margin-top:0">Parcela ${r.n}/${r.total}. A edição vale só para esta parcela (a foto vale para todas).</div>` : ''}
   ${r.tipo === 'S' ? `<div class="prod" id="dfoto">${detFoto(r.img)}</div>` : ''}
+  ${r.tipo !== 'T' && !r.grupo ? repetirSel((achaRot(r.tipo, r.desc) || {}).freq || '') : ''}
   <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${r.comp ? `<a class="btn" href="${esc(r.comp)}" target="_blank" rel="noopener">${ic('clip')} Ver comprovante</a>` : ''}
    <label class="btn" style="margin:0">${ic('scan')} ${r.comp ? 'Trocar' : 'Anexar'} comprovante<input id="ea" type="file" accept="image/*,application/pdf" style="display:none"></label></div>
   ${r.grupo ? `<button class="btn no full" style="margin-bottom:10px" data-a="apagargrupo" data-id="${esc(r.grupo)}">${ic('trash')} Apagar o parcelamento inteiro (${Object.values(S.linhas).filter(x => x.grupo === r.grupo && !x.del).length} parcelas)</button>` : ''}
@@ -1025,6 +1037,9 @@ async function acao(a, el) {
     const ops = [op];
     if (r0 && r0.tipo === 'S' && detImg !== null && detImg !== (r0.img || '')) {
       if (r0.grupo) Object.values(S.linhas).filter(x => x.grupo === r0.grupo && x.id !== r0.id && !x.del).forEach(x => ops.push({op: 'edit', id: x.id, imagem: detImg})); op.imagem = detImg; }
+    if (r0 && r0.tipo !== 'T' && !r0.grupo && $('#frep')) { const nd = op.descricao || r0.cat, fr = $('#frep').value, ex = achaRot(r0.tipo, r0.desc);
+      if (fr && !nd) return aviso('Escreva uma descrição para poder repetir.', 'bad');
+      ops.push(...opRepetir(r0.tipo, nd, v, op.data, fr, ex && ex.id)); }
     fechar(); await fazer(ops, 'Atualizado');
   }
   else if (a === 'apagargrupo') { fechar(); await fazer([{op: 'del', id: d.id}], 'Parcelamento apagado'); }
