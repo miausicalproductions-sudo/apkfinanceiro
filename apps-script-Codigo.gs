@@ -350,7 +350,7 @@ function parsePrev_(rest) {
   } else if ((m = t.match(/ (\d{1,2}\/\d{1,2}(?:\/\d{2,4})?) /))) { data = dataTxt_(m[1]); t = t.replace(m[0], ' '); }
   const p = parse_(t.trim());
   if (!p || p.tipo === 'T') return null;
-  p.data = data || hoje_(); if (!p.pAtual) p.n = 1; p.previsto = 1;
+  p.data = data || hoje_(); p.previsto = 1;
   return p;
 }
 

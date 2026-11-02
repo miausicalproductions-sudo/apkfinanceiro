@@ -317,7 +317,7 @@ function parseTxt(txt) {
     data = proxDia(Number(m[1])); t = t.replace(m[0], ' ');
   } else if ((m = t.match(/ (\d{1,2}\/\d{1,2}(?:\/\d{2,4})?) /))) { data = dataTxt(m[1]); t = t.replace(m[0], ' '); }
   p = parseBase(t.trim()); if (!p || p.tipo === 'T') return null;
-  p.data = data || isoHoje(); if (!p.pAtual) p.n = 1; p.previsto = 1; return p;
+  p.data = data || isoHoje(); p.previsto = 1; return p;
 }
 function aplicarTexto(it) {
   const p = parseTxt(it.texto); if (!p) return false;
@@ -705,13 +705,13 @@ function telaMes() {
      ${r.aj ? `<div class="hint" style="margin:8px 0 0">Ajustes de saldo: ${r.aj > 0 ? '+' : ''}${brl(r.aj)} (fora da conta acima)</div>` : ''}</div>`;
   } else if (S.mview === 'gt') {
     corpo = `<div class="card" style="padding:6px 18px">${cats.length ? cats.map(c => { const v = CATV[c] || CATV.Outros, p = o[c] ? Math.round(r.cat[c] / o[c] * 100) : Math.round(r.cat[c] / (r.s || 1) * 100);
-      return `<div class="row"><div class="ico" style="color:${v[1]}">${ic(v[0])}</div><div class="t"><b>${esc(c)}</b><span>${o[c] ? p + '% de ' + brl(o[c]) : p + '% dos gastos'}</span><div class="prog"><i class="${o[c] && p > 100 ? 'over' : ''}" style="width:${Math.min(p, 100)}%"></i></div></div><div class="v">${brl(r.cat[c])}</div></div>`; }).join('') : '<div class="empty">Sem saídas neste mês.</div>'}</div>
+      return `<div class="row" data-a="catlista" data-c="${esc(c)}"><div class="ico" style="color:${v[1]}">${ic(v[0])}</div><div class="t"><b>${esc(c)}</b><span>${o[c] ? p + '% de ' + brl(o[c]) : p + '% dos gastos'}</span><div class="prog"><i class="${o[c] && p > 100 ? 'over' : ''}" style="width:${Math.min(p, 100)}%"></i></div></div><div class="v">${brl(r.cat[c])}</div><span class="mut" style="font-size:16px">${ic('right')}</span></div>`; }).join('') : '<div class="empty">Sem saídas neste mês.</div>'}</div>
      <button class="btn full" data-a="orc">${ic('target')} Definir orçamentos</button>`;
   } else {
     const top = Object.keys(r.dia).sort((a, b) => r.dia[b] - r.dia[a]).slice(0, 5);
     corpo = `<div class="card"><div class="lbl">Gastos em ${MESES[m - 1]}</div><div class="big" style="margin-top:4px">${brl(r.s)}</div>${mapaDias(S.mes, r.dia)}
      <div style="display:flex;gap:6px;align-items:center;margin-top:14px;font-size:12px;color:var(--mut)">menos <span class="heat" style="display:flex;gap:4px;margin:0"><i style="width:14px;aspect-ratio:1"></i><i class="l1" style="width:14px;aspect-ratio:1"></i><i class="l2" style="width:14px;aspect-ratio:1"></i><i class="l3" style="width:14px;aspect-ratio:1"></i><i class="l4" style="width:14px;aspect-ratio:1"></i></span> mais</div></div>
-     <div class="card" style="padding:6px 18px">${top.length ? top.map(d => `<div class="row"><div class="ico">${ic('cal')}</div><div class="t"><b>Dia ${d}</b><span>maiores gastos do mês</span></div><div class="v">${brl(r.dia[d])}</div></div>`).join('') : '<div class="empty">Sem gastos neste mês.</div>'}</div>`;
+     <div class="card" style="padding:6px 18px">${top.length ? top.map(d => `<div class="row" data-a="dialista" data-d="${d}"><div class="ico">${ic('cal')}</div><div class="t"><b>Dia ${d}</b><span>maiores gastos do mês</span></div><div class="v">${brl(r.dia[d])}</div><span class="mut" style="font-size:16px">${ic('right')}</span></div>`).join('') : '<div class="empty">Sem gastos neste mês.</div>'}</div>`;
   }
   return `<h1 class="title">Para onde foi<br><span>o seu dinheiro.</span></h1>
   <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 14px"><button class="btn sm" data-a="mm" data-d="-1" aria-label="Mês anterior">${ic('left')}</button><b style="font-size:17px;text-transform:capitalize">${MESES[m - 1]} ${y}</b><button class="btn sm" data-a="mm" data-d="1" aria-label="Próximo mês">${ic('right')}</button></div>
@@ -855,7 +855,7 @@ async function salvarNovo() {
   if (tipo === 'T') { op.destino = $('#fdst').value; if (op.destino === cart) return aviso('Escolha contas diferentes.', 'bad'); op.categoria = 'Transferência'; op.descricao = 'Transf.'; }
   else { op.descricao = desc; op.categoria = $('#fcat').value || adivinha(desc, tipo); if (tipo === 'S') { op.n = parseInt($('#fn').value) || 1; const pa = parseInt($('#fpa').value) || 0;
       if (op.n > 1 && pa >= 1 && pa <= op.n) { op.pAtual = pa; const dia = parseInt($('#fdia').value); if (dia >= 1 && dia <= 31) op.dia = dia; } }
-    if (form.url) op.comprovante = form.url; if (form.img && tipo === 'S') op.imagem = form.img; if ($('#fp').checked) { op.previsto = 1; if (!op.pAtual) op.n = 1; } }
+    if (form.url) op.comprovante = form.url; if (form.img && tipo === 'S') op.imagem = form.img; if ($('#fp').checked) op.previsto = 1; }
   fechar(); await fazer([op], op.pAtual ? 'Parcela ' + op.pAtual + '/' + op.n + ' lançada' : 'Lançado');
   if (tipo === 'S' && !op.imagem && querProduto({tipo, descricao: desc})) fotoDepois(op.id, desc);
 }
@@ -873,6 +873,12 @@ async function enviarArquivo(f) {
 }
 let detImg = null;
 const detFoto = img => `<div class="ico ${img ? 'pic' : ''}">${ic('search')}${img ? `<img src="${esc(img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</div><div class="t"><b>${img ? 'Foto do produto' : 'Sem foto'}</b>${img ? 'Toque no X para tirar' : 'Escreva o nome do produto e busque'}</div>${img ? `<button class="btn sm" data-a="tirarfotodet" aria-label="Tirar foto">${ic('x')}</button>` : ''}<button class="btn sm" data-a="buscarfotodet">${ic('search')} Buscar</button>`;
+function abrirLista(titulo, rows, sub) {
+  rows = rows.sort((a, b) => b.data.localeCompare(a.data) || b.at - a.at); const tot = rows.reduce((a, r) => a + r.valor, 0);
+  folha(`<h3>${esc(titulo)}</h3><div class="hint" style="margin-top:-8px">${rows.length} ${rows.length === 1 ? 'lançamento' : 'lançamentos'}${sub ? ' em ' + esc(sub) : ''} • total ${brl(tot)}. Toque em um para editar, mudar a categoria ou apagar.</div>
+  <div class="card" style="padding:6px 16px;margin-bottom:12px">${rows.length ? rows.map(r => linha(r)).join('') : '<div class="empty">Nada por aqui.</div>'}</div>
+  <button class="btn full" data-a="fechar">Fechar</button>`);
+}
 function abrirDet(id) {
   const r = S.linhas[id]; if (!r) return; detImg = r.img || '';
   const cs = S.carteiras.map(c => c.nome);
@@ -952,6 +958,8 @@ async function acao(a, el) {
     fechar(); await fazer(ops, 'Orçamentos salvos');
   }
   else if (a === 'adiantar') { const x = parcelas().find(p => p.k === d.k); if (x) await fazer([{op: 'adiantar', descricao: x.d, qtd: 1}], 'Parcela adiantada'); }
+  else if (a === 'catlista') abrirLista(d.c, vivas().filter(r => !r.prev && r.data <= isoHoje() && r.data.slice(0, 7) === S.mes && r.tipo === 'S' && r.cat === d.c), nomeMes(S.mes));
+  else if (a === 'dialista') abrirLista('Dia ' + d.d + ' de ' + nomeMes(S.mes), vivas().filter(r => !r.prev && r.data <= isoHoje() && r.data.slice(0, 7) === S.mes && r.tipo === 'S' && r.cat !== 'Ajuste' && Number(r.data.slice(8)) === Number(d.d)), '');
   else if (a === 'pvmodo') { S.pv = d.v; render(); }
   else if (a === 'pvm') { S.pvm = Math.max(0, (S.pvm || 0) + Number(d.d)); render(); }
   else if (a === 'qenviar') await enviarQuick();
