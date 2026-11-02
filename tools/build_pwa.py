@@ -12,6 +12,9 @@ def sub(a, b, count=1):
 # --- meta ---
 s = s.replace('content="#000000"', 'content="#fdf2f8"')
 s = s.replace('black-translucent', 'default')
+# --- versão da Thaís: quem pagou (Eu / Pai) ---
+assert 'const PAIS = false;' in s and 'const VSERV = 5;' in s
+s = s.replace('const PAIS = false;', 'const PAIS = true;').replace('const VSERV = 5;', 'const VSERV = 6;')
 # --- paleta ---
 s = re.sub(r':root\{--bg:#000;.*?--azul:#3d8bff;', ':root{--bg:#fdf2f8;--card:#ffffff;--card2:#f6edfd;--line:#f4e4f0;--line2:#e9d8f4;--tx:#4b3560;--mut:#9a86ad;--dim:#c5b6d4;--on:#ffffff;--lima:#ee7ab8;--lima2:#c9a6f5;--verm:#ef6a85;--azul:#9b8cf0;', s, count=1, flags=re.S)
 # cores soltas no CSS/JS

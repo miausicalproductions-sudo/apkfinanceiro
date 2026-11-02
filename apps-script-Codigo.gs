@@ -25,10 +25,10 @@ const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'T
   mouse:'Eletrônicos',teclado:'Eletrônicos',monitor:'Eletrônicos',carregador:'Eletrônicos',camisa:'Roupas',tenis:'Roupas',
   calca:'Roupas',vestido:'Roupas',curso:'Educação',livro:'Educação',faculdade:'Educação',escola:'Educação'};
 // colunas: 0 id | 1 data | 2 tipo | 3 valor | 4 categoria | 5 descricao | 6 carteira | 7 destino | 8 grupo
-//          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem
-const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem'];
+//          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem | 16 pagador (vazio = quem registra; 'pai' = pago pelo pai)
+const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem','pagador'];
 const NC = H.length;
-const VERSAO = 5;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
+const VERSAO = 6;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
 
 /* ---------- INSTALAÇÃO ---------- */
 function instalar() {
@@ -126,7 +126,7 @@ function somaMes_(iso, k) {
 function rows_() {
   const s = lanc_(), n = s.getLastRow();
   if (n < 2) return [];
-  return s.getRange(2, 1, n - 1, NC).getValues().map(r => { r[0] = S_(r[0]); r[1] = d_(r[1]); r[8] = S_(r[8]); r[13] = S_(r[13]); r[15] = S_(r[15]); return r; });
+  return s.getRange(2, 1, n - 1, NC).getValues().map(r => { r[0] = S_(r[0]); r[1] = d_(r[1]); r[8] = S_(r[8]); r[13] = S_(r[13]); r[15] = S_(r[15]); r[16] = S_(r[16]); return r; });
 }
 function tabela_(nome, cols) {
   const s = sh_(nome), n = s.getLastRow();
@@ -166,7 +166,7 @@ function gravar_(list) {
     const ids = new Set(n < 2 ? [] : s.getRange(2, 1, n - 1, 1).getValues().flat().map(S_));
     const now = Date.now();
     const novos = list.filter(e => !ids.has(S_(e.id))).map(e => [e.id, e.data, e.tipo, e.valor, e.categoria || 'Outros',
-      e.descricao || '', e.carteira, e.destino || '', e.grupo || '', e.n || '', e.total || '', now, 0, e.comprovante || '', e.previsto ? 1 : 0, e.imagem || '']);
+      e.descricao || '', e.carteira, e.destino || '', e.grupo || '', e.n || '', e.total || '', now, 0, e.comprovante || '', e.previsto ? 1 : 0, e.imagem || '', e.pagador || '']);
     if (novos.length) {
       const falta = n + novos.length - s.getMaxRows();
       if (falta > 0) s.insertRowsAfter(s.getMaxRows(), falta + 200);
@@ -189,7 +189,7 @@ function mudar_(pred, fn) {
     const r = s.getRange(2, 1, n - 1, NC), v = r.getValues();
     let c = 0; const now = Date.now();
     v.forEach(x => {
-      x[0] = S_(x[0]); x[1] = d_(x[1]); x[8] = S_(x[8]); x[13] = S_(x[13]); x[15] = S_(x[15]);
+      x[0] = S_(x[0]); x[1] = d_(x[1]); x[8] = S_(x[8]); x[13] = S_(x[13]); x[15] = S_(x[15]); x[16] = S_(x[16]);
       if (pred(x)) { fn(x); x[11] = now; c++; }
     });
     if (c) r.setValues(v);
@@ -203,7 +203,7 @@ function criar_(o) {
   const data = o.data || hoje_(), cart = o.carteira || CARTEIRA_PADRAO, valor = Math.round(Number(o.valor) * 100) / 100;
   if (!(valor > 0) || !o.id) throw new Error('valor/id inválido');
   const base = { tipo: o.tipo, categoria: o.categoria, descricao: o.descricao, carteira: cart, destino: o.destino,
-    comprovante: o.comprovante, previsto: o.previsto ? 1 : 0, imagem: S_(o.imagem).slice(0, 500) };
+    comprovante: o.comprovante, previsto: o.previsto ? 1 : 0, imagem: S_(o.imagem).slice(0, 500), pagador: S_(o.pagador).slice(0, 20) };
   const n = Number(o.n) || 1, lista = [];
   const pa = Math.floor(Number(o.pAtual) || 0);
   if (o.tipo === 'S' && n > 1 && pa >= 1 && pa <= n) {
@@ -229,7 +229,7 @@ function adiantar_(desc, qtd) {
     const s = lanc_(), N = s.getLastRow();
     if (N < 2) return { c: 0 };
     const r = s.getRange(2, 1, N - 1, NC), v = r.getValues(), h = hoje_(), q = S_(desc).toLowerCase();
-    v.forEach(x => { x[0] = S_(x[0]); x[1] = d_(x[1]); x[8] = S_(x[8]); x[13] = S_(x[13]); x[15] = S_(x[15]); });
+    v.forEach(x => { x[0] = S_(x[0]); x[1] = d_(x[1]); x[8] = S_(x[8]); x[13] = S_(x[13]); x[15] = S_(x[15]); x[16] = S_(x[16]); });
     const cand = v.filter(x => x[12] != 1 && x[8] && x[2] === 'S' && x[1] > h && S_(x[5]).toLowerCase().includes(q));
     if (!cand.length) return { c: 0 };
     const g = cand[0][8];
@@ -901,7 +901,7 @@ function api_(b) {
         if (o.op === 'add') criar_(o);
         else if (o.op === 'del') mudar_(casa_(o.id), x => x[12] = 1);
         else if (o.op === 'cat') mudar_(casa_(o.id), x => x[4] = o.categoria);
-        else if (o.op === 'edit') mudar_(x => x[0] === S_(o.id), x => { x[1] = o.data || x[1]; x[3] = o.valor || x[3]; x[4] = o.categoria || x[4]; x[5] = o.descricao != null ? o.descricao : x[5]; x[6] = o.carteira || x[6]; if (o.previsto != null) x[14] = o.previsto ? 1 : 0; if (o.imagem != null) x[15] = S_(o.imagem).slice(0, 500); });
+        else if (o.op === 'edit') mudar_(x => x[0] === S_(o.id), x => { x[1] = o.data || x[1]; x[3] = o.valor || x[3]; x[4] = o.categoria || x[4]; x[5] = o.descricao != null ? o.descricao : x[5]; x[6] = o.carteira || x[6]; if (o.previsto != null) x[14] = o.previsto ? 1 : 0; if (o.imagem != null) x[15] = S_(o.imagem).slice(0, 500); if (o.pagador != null) x[16] = S_(o.pagador).slice(0, 20); });
         else if (o.op === 'anexar') mudar_(so_(o.id), x => x[13] = S_(o.url));
         else if (o.op === 'receber')mudar_(x => x[0] === S_(o.id) && prev_(x), x => { x[14] = 0; x[1] = o.data || hoje_(); if (o.valor) x[3] = o.valor; });
         else if (o.op === 'adiantar') adiantar_(o.descricao, o.qtd);
