@@ -1210,7 +1210,8 @@ function abrirNovo(prev, scan) {
     try { const r = await enviarArquivo(f); form.url = r.url;
       if (r.leitura) { const d = r.leitura; $('#fv').value = String(d.valor).replace('.', ','); if (d.desc && !$('#fd').value) $('#fd').value = d.desc; $('#fdt').value = d.data;
         form.tipo = d.tipo; $('#sg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.v === d.tipo)); $('#gn').style.display = d.tipo === 'S' ? '' : 'none';
-        $('#fh').textContent = 'Li ' + (d.tipo === 'E' ? 'uma entrada' : 'uma saída') + ' de ' + brl(d.valor) + (d.incerto ? ' (confira se é entrada ou saída)' : '') + '. Confira e salve.'; }
+        $('#fh').textContent = 'Li ' + (d.tipo === 'E' ? 'uma entrada' : 'uma saída') + ' de ' + brl(d.valor) + (d.incerto ? ' (confira se é entrada ou saída)' : '') + (!$('#fd').value ? '. Com o que foi? Escreva e toque em Salvar.' : '. Confira e salve.');
+        if (!$('#fd').value) { $('#fd').placeholder = 'Com o que foi?'; try { $('#fd').focus(); } catch (e) {} } }
       else $('#fh').textContent = 'Comprovante salvo no Drive, mas não consegui ler o valor. Preencha à mão.';
     } catch (er) { $('#fh').textContent = er.message; } });
   if (scan) setTimeout(() => $('#ff') && $('#ff').click(), 120);
@@ -1506,11 +1507,27 @@ async function enviarQuick() {
   if (querProduto(p)) fotoDepois(it.id, p.descricao);
 }
 document.addEventListener('click', e => { const el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return; acao(el.dataset.a, el); });
-document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'qt') { e.preventDefault(); enviarQuick(); } if (e.key === 'Enter' && e.target.id === 'ar') { const b = document.querySelector('[data-a=okajuste]'); if (b) b.click(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'qt') { e.preventDefault(); enviarQuick(); } if (e.key === 'Enter' && e.target.id === 'fd' && form && form.url) { e.preventDefault(); const b = document.querySelector('[data-a=salvarnovo]'); if (b) b.click(); } if (e.key === 'Enter' && e.target.id === 'ar') { const b = document.querySelector('[data-a=okajuste]'); if (b) b.click(); } });
 window.addEventListener('online', () => { enviar(); drenarEmpresa(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) enviar(); });
 setInterval(() => { if (!document.hidden) { enviar(); drenarEmpresa(); } }, 60000);
 setTimeout(() => { try { drenarEmpresa(); } catch (e) {} }, 3000);
+/* ---- comprovante recebido pelo "Compartilhar" do Android: abre o lançamento já lendo o valor ---- */
+let lendoComp = false;
+async function checarCompartilhado() {
+  if (lendoComp) return; const A = AV(); if (!A || !A.pegarCompartilhado) return;
+  try {
+    lendoComp = true; const r = await A.pegarCompartilhado(); if (!r || !r.b64) return;
+    if (!/^https:\/\//.test(S.cfg.url) || !S.cfg.chave) return aviso('Configure o link e a chave em Ajustes para receber comprovantes.', 'bad');
+    const bin = atob(r.b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const pdf = r.mime === 'application/pdf', f = new File([u8], pdf ? 'comprovante.pdf' : 'comprovante.jpg', {type: pdf ? 'application/pdf' : (r.mime || 'image/jpeg')});
+    abrirNovo(false, false);
+    const dtr = new DataTransfer(); dtr.items.add(f); $('#ff').files = dtr.files; $('#ff').dispatchEvent(new Event('change'));
+  } catch (e) { aviso('Não consegui abrir o comprovante compartilhado.', 'bad'); } finally { lendoComp = false; }
+}
+window.addEventListener('compartilhado', checarCompartilhado);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checarCompartilhado(); });
+
 
 /* ============ início ============ */
 // versão para Safari/iPhone: guarda o app para abrir sem internet (no app Android isso não é usado)
@@ -1518,6 +1535,7 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && locat
 carregarLocal(); render();
 if (!S.cfg.url) { S.tab = 'mais'; render(); aviso('Primeiro configure o link e a chave.', ''); }
 else { reaplicar(); render(); enviar(); }
+setTimeout(checarCompartilhado, 400); setTimeout(checarCompartilhado, 1600); setTimeout(checarCompartilhado, 4000);
 setTimeout(() => { try { if (nativo() && !localStorage.getItem('fin_perm')) { localStorage.setItem('fin_perm', '1'); const A = AV(); if (A) A.permissao(); } gravarAgenda(); } catch (e) {} }, 2500);
 </script>
 </body>

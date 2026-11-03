@@ -2,6 +2,7 @@ package app.financeiro.matheus;
 
 import android.Manifest;
 import android.os.Build;
+import android.util.Base64;
 
 import androidx.core.app.ActivityCompat;
 
@@ -37,5 +38,15 @@ public class AvisosPlugin extends Plugin {
                 call.resolve(r);
             } catch (Exception e) { call.reject(String.valueOf(e.getMessage())); }
         }).start();
+    }
+
+    /** Entrega (uma vez) o comprovante que chegou pelo "Compartilhar", em base64. */
+    @PluginMethod
+    public void pegarCompartilhado(PluginCall call) {
+        JSObject r = new JSObject();
+        byte[] b; String mime;
+        synchronized (MainActivity.trava) { b = MainActivity.recebido; mime = MainActivity.recebidoMime; MainActivity.recebido = null; }
+        if (b != null) { r.put("b64", Base64.encodeToString(b, Base64.NO_WRAP)); r.put("mime", mime); }
+        call.resolve(r);
     }
 }
