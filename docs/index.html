@@ -1021,7 +1021,7 @@ function abrirMeta(id) {
   folha(`<h3 style="display:flex;align-items:center;gap:12px">${metaIco(m)}<span>${esc(m.nome)}</span></h3>
   <div class="card" style="border-color:${cor};padding:16px 18px;margin-bottom:12px"><div style="font-size:21px;font-weight:600;color:${cor};letter-spacing:-.02em">${esc(a.titulo)}</div><div style="margin-top:8px;font-size:15px;line-height:1.4">${esc(a.texto)}</div></div>
   ${a.aviso ? `<div class="hint" style="margin:0 6px 12px;color:#f6cf7a">${esc(a.aviso)}</div>` : ''}
-  ${F.ev.some(e => e.atras) ? `<div class="hint" style="margin:0 6px 12px;color:#f6cf7a">Tem previsto atrasado (data que já passou) contando como se fosse pagar/receber hoje. Toque em “Sai” ou “Entra” para conferir: confirme ou apague o que não vale mais.</div>` : ''}
+  ${F.ev.some(e => e.atras) ? `<div class="hint" style="margin:0 6px 12px;color:#f6cf7a">Tem previsto atrasado (data que já passou) contando como se fosse pagar/receber hoje. Toque em “Contas e parcelas” ou “Entra” para conferir: confirme ou apague o que não vale mais.</div>` : ''}
   <div class="card" style="padding:8px 18px;margin-bottom:12px">
    ${lin('Preço', brl(m.valor))}${a.guard > 0 ? lin('Já separado', brl(a.guard)) : ''}
    ${lin('Seu saldo livre hoje', brl(a.avail), a.avail < 0 ? 'var(--verm)' : '')}
