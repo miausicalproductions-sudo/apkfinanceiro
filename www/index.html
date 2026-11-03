@@ -496,6 +496,11 @@ async function jget(url, ms) {
   try { const r = await fetch(url, c ? {signal: c.signal} : {}); if (!r.ok) return null; return await r.json(); } catch (e) { return null; } finally { clearTimeout(t); }
 }
 const casaTitulo = (q, titulo) => { const d = distintivos(q), tt = new Set(toks(titulo)); if (!d.length) return false; const num = d.filter(w => /\d/.test(w)); return (num.length ? num : d).some(w => tt.has(w)); };
+// busca pelo Apps Script do próprio usuário (Google Shopping/Imagens e Bing): o celular sozinho não consegue
+async function srcApps(q) {
+  if (!/^https:\/\//.test(S.cfg.url) || !S.cfg.chave) return null;
+  try { const j = await Promise.race([api({acao: 'foto', q}), new Promise(r => setTimeout(() => r(null), 14000))]); return j && j.img ? {img: j.img, texto: q} : null; } catch (e) { return null; }
+}
 async function srcML(q) {
   const j = await jget('https://api.mercadolibre.com/sites/MLB/search?limit=4&q=' + encodeURIComponent(q)), it = j && (j.results || []).find(x => x.thumbnail && casaTitulo(q, x.title));
   return it ? {img: it.thumbnail.replace(/^http:/, 'https:'), texto: (it.title || '') + ' ' + String(it.domain_id || '').replace(/_/g, ' ')} : null;
@@ -519,7 +524,7 @@ async function buscarProduto(q) {
   if (IMGC[k]) return IMGC[k];
   if (semFoto[k] && Date.now() - semFoto[k] < 600000) return null;
   let r = null;
-  for (const f of [() => srcML(q), () => srcWiki(q, 'pt'), () => srcWiki(q, 'en'), () => srcCommons(q)]) { try { r = await f(); } catch (e) { r = null; } if (r) break; }
+  for (const f of [() => srcApps(q), () => srcML(q), () => srcWiki(q, 'pt'), () => srcWiki(q, 'en'), () => srcCommons(q)]) { try { r = await f(); } catch (e) { r = null; } if (r) break; }
   if (!r) { semFoto[k] = Date.now(); return null; }
   const out = {img: r.img, cat: classificar(r.texto)}; imgGuardar(k, out); return out;
 }
@@ -643,21 +648,24 @@ function janela() {
   const rendaObs = ent.reduce((a, r) => a + r.valor, 0) / dias * 30.4;
   return {h, ym, desde, dias, base, rec, ks, varDia, varCalc, varUser, grandes, rendaObs, nLanc: rows.length, pouco: dias < 14 || rows.length < 8};
 }
-// o que deve entrar e sair nos próximos 30 dias (sem nenhuma compra nova)
-function fluxo30(W) {
-  const h = W.h, lim = somaDias(h, 30), ev = [], rots = S.rotinas.filter(r => r.ativa && r.valor > 0);
+// o que deve entrar e sair nos próximos "dias" dias (sem nenhuma compra nova). Entradas: só as anotadas.
+function fluxo(W, dias) {
+  dias = dias || 30;
+  const h = W.h, lim = somaDias(h, dias), ev = [], rots = S.rotinas.filter(r => r.ativa && r.valor > 0);
   pendentes().filter(r => r.data <= lim && !(PAIS && r.pag === 'pai')).forEach(r => ev.push({d: r.data < h ? h : r.data, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc || r.cat, t: 'prev', id: r.id, atras: r.data < h ? r.data : '', parc: r.n ? r.n + '/' + r.total : ''}));
   rots.forEach(r => ocorrencias(r, lim).forEach(d => {
     const sinal = r.tipo === 'E' ? 1 : -1, tk = toks(r.desc).filter(w => w.length > 2);
     if (r.freq !== 'dia' && ev.some(x => x.t === 'prev' && Math.sign(x.v) === sinal && Math.abs((new Date(x.d) - new Date(d)) / 864e5) <= (r.freq === 'mes' ? 5 : 2) &&
       (toks(x.nome).some(w => w.length > 2 && tk.includes(w)) || Math.abs(Math.abs(x.v) - r.valor) <= Math.max(1, r.valor * .01)))) return;   // já anotado como previsto: não conta duas vezes
     ev.push({d, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc, t: 'rot', rid: r.id}); }));
-  const rk = new Set(rots.map(r => norm(r.desc)));
   const fonte = rots.some(r => r.tipo === 'E') ? 'rotina' : ev.some(x => x.v > 0) ? 'previsto' : 'nenhuma';
-  const entDia = 0;      // entradas: só as anotadas
-  const entra = ev.filter(x => x.v > 0).reduce((a, x) => a + x.v, 0) + entDia * 30, saiConta = -ev.filter(x => x.v < 0).reduce((a, x) => a + x.v, 0), saiVar = W.varDia * 30;
-  return {ev: ev.sort((a, b) => a.d.localeCompare(b.d)), entDia, fonte, entra, saiConta, saiVar, liquido: entra - saiConta - saiVar};
+  const entDia = 0, soma = f => ev.filter(f).reduce((a, x) => a + x.v, 0);
+  const entRec = soma(x => x.v > 0 && x.t === 'rot'), entAvul = soma(x => x.v > 0 && x.t === 'prev');      // recorrente (certeza) x avulsa (só na data)
+  const entRecMes = rots.filter(r => r.tipo === 'E').reduce((a, r) => a + r.valor * vezesMes(r), 0);
+  const entra = entRec + entAvul, saiConta = -soma(x => x.v < 0), saiVar = W.varDia * dias;
+  return {ev: ev.sort((a, b) => a.d.localeCompare(b.d)), entDia, fonte, entra, entRec, entAvul, entRecMes, saiConta, saiVar, liquido: entra - saiConta - saiVar};
 }
+const fluxo30 = W => fluxo(W, 30);
 function estat() {
   const W = janela(), F = fluxo30(W), renda = F.entra, gasto = F.saiConta + F.saiVar;
   const diaSal = Math.round(mediana(W.base.map(m => m.rowsE.length ? Number(m.rowsE.slice().sort((a, b) => b.valor - a.valor)[0].data.slice(8)) : 0).filter(Boolean))) || 5;
@@ -671,50 +679,66 @@ const vezesMes = r => r.freq === 'dia' ? 30.4 : r.freq === 'semana' ? 4.35 : 1;
 // datas (de hoje até "ate") em que uma rotina acontece; se já foi lançada hoje, começa amanhã
 function ocorrencias(r, ate) {
   const h = isoHoje(), out = [], jaHoje = vivas().some(x => !x.prev && x.data === h && norm(x.desc) === norm(r.desc));
-  for (let i = jaHoje ? 1 : 0; i <= 31; i++) {
+  for (let i = jaHoje ? 1 : 0; i <= 1200; i++) {
     const d = somaDias(h, i); if (d > ate) break; const dt = new Date(d + 'T12:00:00');
     if (r.freq === 'dia' || (r.freq === 'semana' && dt.getDay() === Number(r.dia)) || (r.freq === 'mes' && dt.getDate() === Math.min(Number(r.dia) || 1, new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate()))) out.push(d);
   }
   return out;
 }
-// saldo dia a dia nos próximos 30 dias, com uma compra opcional (à vista e/ou 1ª parcela)
-function simular(avail, compra, parcela, E) {
-  E = E || estat(); const F = E.F, h = isoHoje(), ev = F.ev.slice();
-  if (parcela) ev.push({d: somaDias(h, 28), v: -parcela, nome: '1ª parcela', t: 'parc'});
-  let saldo = avail - compra, min = saldo, minDia = h;
-  for (let i = 0; i <= 30; i++) {
-    const d = somaDias(h, i); if (i > 0) saldo += F.entDia - E.W.varDia;
-    ev.filter(x => x.d === d).forEach(x => saldo += x.v);
-    if (saldo < min) { min = saldo; minDia = d; }
-  }
-  const reserva = Math.max(50, E.gasto * .1), ver = min >= reserva ? 'ok' : min >= 0 ? 'aperta' : 'nao';
-  return {ini: avail - compra, fim: saldo, min, minDia, ver, ev, reserva, entra: F.entra, saiConta: F.saiConta, saiVar: F.saiVar, fonte: F.fonte};
+// saldo dia a dia (da data de hoje até "dias" dias à frente) a partir de "ini", com eventos {d,v}
+function trajeto(ini, evs, W, dias) {
+  const h = isoHoje(), por = {}; evs.forEach(x => (por[x.d] = por[x.d] || []).push(x.v));
+  let s = ini, min = ini, minI = 0; const serie = [];
+  for (let i = 0; i <= dias; i++) { if (i > 0) s -= W.varDia; const l = por[somaDias(h, i)]; if (l) l.forEach(v => s += v); serie.push(s); if (s < min) { min = s; minI = i; } }
+  return {serie, min, minDia: somaDias(h, minI), fim: s, dias};
 }
+const mesLbl = iso => MESES[Number(iso.slice(5, 7)) - 1].slice(0, 3) + '/' + iso.slice(2, 4);
+const diasMeses = d => Math.max(1, Math.round(d / 30.4));
+const p10 = v => Math.max(10, Math.floor(v / 10) * 10);
 const diasAte = iso => Math.round((new Date(iso + 'T12:00:00') - new Date(isoHoje() + 'T12:00:00')) / 864e5);
 const mesesAte = iso => Math.max(1, Math.round(diasAte(iso) / 30.4));
-const p10 = v => Math.max(10, Math.floor(v / 10) * 10);
+// o que acontece com o saldo em cada jeito de comprar: à vista, parcelado ou juntando aos poucos
 function analisarMeta(m) {
-  const E = estat(), x = saldos(), guard = guardadoMeta(m), falta = Math.max(0, m.valor - guard), avail = x.total - reservado(m.id);
-  const semCompra = simular(avail, 0, 0, E), vista = simular(avail, m.valor, 0, E), n = m.n > 1 ? m.n : 10, parc = r2(m.valor / n), parcelado = simular(avail, 0, parc, E);
-  const sobra = E.sobra;      // mesma conta do "entram − saem" mostrado na tela
-  const parcOk = parcelado.min >= 0 && sobra > 0 && parc <= sobra * .5, parcVer = parcOk ? (parc <= sobra * .3 ? 'ok' : 'aperta') : 'nao';
-  const gTranq = sobra > 0 && falta > 0 ? p10(Math.min(sobra * .6, falta)) : 0, mesesT = gTranq ? Math.ceil(falta / gTranq) : null;
-  const gRapido = sobra > 0 && falta > 0 ? p10(Math.min(sobra * .9, falta)) : 0, mesesR = gRapido ? Math.ceil(falta / gRapido) : null;
+  const E = estat(), x = saldos(), W = E.W, F = E.F, h = isoHoje(), guard = guardadoMeta(m), falta = Math.max(0, m.valor - guard), avail = x.total - reservado(m.id);
+  const n = m.n > 1 ? m.n : 10, parc = r2(m.valor / n), reserva = Math.max(50, (F.saiConta + F.saiVar) * .1);
+  const ver = mn => mn >= reserva ? 'ok' : mn >= 0 ? 'aperta' : 'nao';
+  const sobra = F.entRecMes - F.saiConta - F.saiVar;      // só o que se repete (certeza): entradas avulsas não entram aqui
+  const mk = (id, ini, baseIni, extra, dias) => { const f = fluxo(W, dias), tr = trajeto(ini, f.ev.concat(extra), W, dias), b = trajeto(baseIni, f.ev, W, dias);
+    return Object.assign(tr, {id, ver: ver(tr.min), base: b.serie, reserva, fonte: f.fonte, entra: F.entra, meses: diasMeses(dias), ini}); };
+  const vista = mk('vista', avail - m.valor, avail, [], 90);
+  const dp = Math.min(760, Math.max(90, 28 + Math.ceil(30.4 * (n - 1)) + 31)), ep = []; for (let k = 0; k < n; k++) ep.push({d: somaDias(h, 28 + Math.round(30.4 * k)), v: -parc, nome: 'parcela', t: 'parc'});
+  const parcelado = mk('parc', avail, avail, ep, dp);
+  const g = sobra > 0 && falta > 0 ? p10(Math.min(sobra * .6, falta)) : 0, N = g ? Math.ceil(falta / g) : 0;
+  let junt = null;
+  if (g && N <= 36) { const ej = []; for (let k = 0; k < N; k++) ej.push({d: somaDias(h, Math.round(30.4 * k)), v: -g, nome: 'guardar', t: 'jun'});
+    junt = mk('junt', avail - guard, avail - guard, ej, Math.min(1130, Math.round(30.4 * N) + 31)); junt.g = g; junt.N = N; junt.quando = somaDias(h, Math.round(30.4 * N)); }
+  const gTranq = g, mesesT = g ? N : null;
+  const semCompra = trajeto(avail, fluxo(W, 30).ev, W, 30);
+  vista.faltaVista = Math.max(0, m.valor - Math.max(0, avail)); parcelado.parc = parc; parcelado.n = n;
+  const parcVer = parcelado.ver;
   let prazoTxt = '';
   if (m.prazo && falta > 0) { const d = diasAte(m.prazo);
     if (d < 0) prazoTxt = 'O prazo (' + dt(m.prazo) + ') já passou. Edite a meta para uma data nova.';
-    else if (d <= 45) prazoTxt = 'Até ' + dt(m.prazo) + ' (' + d + (d === 1 ? ' dia' : ' dias') + ') você precisaria juntar ' + brl(falta) + '. ' + (semCompra.min - falta >= 0 ? 'Dá, se não aparecer nenhum gasto fora do normal.' : 'Pelo ritmo atual não dá: considere adiar a data.');
-    else { const g = Math.ceil(falta / mesesAte(m.prazo)); prazoTxt = 'Para chegar até ' + dt(m.prazo) + ' precisa guardar ' + brl(g) + ' por mês' + (sobra >= g ? ' (cabe no que sobra).' : sobra > 0 ? ' (mais do que sobra hoje, que é ' + brl(sobra) + ').' : '.'); } }
-  const alt = parcOk ? 'Parcelando em ' + n + 'x de ' + brl(parc) + ' cabe no seu mês.' : gTranq ? 'Guardando ' + brl(gTranq) + ' por mês, você compra em ' + mesesT + (mesesT === 1 ? ' mês.' : ' meses.') : 'Hoje não sobra dinheiro no mês para guardar. Veja as dicas para abrir folga.';
+    else if (d <= 45) prazoTxt = 'Até ' + dt(m.prazo) + ' (' + d + (d === 1 ? ' dia' : ' dias') + ') você precisaria juntar ' + brl(falta) + '. ' + (semCompra.min - falta >= 0 ? 'Dá, se não aparecer nenhum gasto fora do normal.' : 'Pelo que está anotado não dá: considere adiar a data.');
+    else { const gg = Math.ceil(falta / mesesAte(m.prazo)); prazoTxt = 'Para chegar até ' + dt(m.prazo) + ' precisa guardar ' + brl(gg) + ' por mês' + (sobra >= gg ? ' (cabe no que sobra).' : sobra > 0 ? ' (mais do que sobra hoje, que é ' + brl(sobra) + ').' : '.'); } }
+  // frases de cada cenário
+  vista.texto = avail < m.valor ? 'Você tem ' + brl(Math.max(0, avail)) + ' livres e ele custa ' + brl(m.valor) + ': faltam ' + brl(vista.faltaVista) + '.'
+    : vista.ver === 'nao' ? 'Em ' + mesLbl(vista.minDia) + ' o saldo ficaria ' + brl(vista.min) + ': faltaria dinheiro para as contas.'
+    : (vista.ver === 'aperta' ? 'Fica apertado: ' : 'Depois de pagar, ') + 'o menor saldo nos próximos ' + vista.meses + ' meses é ' + brl(vista.min) + ' (' + mesLbl(vista.minDia) + ').';
+  parcelado.texto = n + 'x de ' + brl(parc) + ', a primeira daqui a cerca de 1 mês. ' + (parcelado.ver === 'nao' ? 'Em ' + mesLbl(parcelado.minDia) + ' o saldo ficaria ' + brl(parcelado.min) + '.' : 'O menor saldo nesse período é ' + brl(parcelado.min) + ' (' + mesLbl(parcelado.minDia) + ').');
+  if (junt) junt.texto = 'Guardando ' + brl(g) + ' por mês você compra em ' + N + (N === 1 ? ' mês' : ' meses') + ' (' + mesLbl(junt.quando) + '). ' + (junt.ver === 'nao' ? 'Mas em ' + mesLbl(junt.minDia) + ' o saldo livre ficaria ' + brl(junt.min) + '.' : 'O menor saldo livre no período é ' + brl(junt.min) + '.');
+  const alt = parcelado.ver !== 'nao' ? 'Parcelando em ' + n + 'x de ' + brl(parc) + ' cabe nos próximos meses.' : junt && junt.ver !== 'nao' ? 'Guardando ' + brl(g) + ' por mês, você compra em ' + N + (N === 1 ? ' mês.' : ' meses.') : 'Pelo que está anotado, hoje não sobra dinheiro por mês para guardar.';
   let titulo, texto, cor;
   if (falta <= 0) { titulo = 'O valor já está separado'; cor = 'ok'; texto = 'Você já guardou o suficiente. Pode comprar sem mexer no resto do saldo.'; }
   else if (semCompra.min < 0) { titulo = 'Seu mês já está no vermelho'; cor = 'nao'; texto = 'Mesmo sem comprar nada, as contas dos próximos 30 dias passam do seu saldo em ' + brl(-semCompra.min) + ' (por volta de ' + dt(semCompra.minDia).slice(0, 5) + '). Antes da meta, o foco é fechar o mês.'; }
-  else if (avail < m.valor) { titulo = 'Ainda não dá à vista'; cor = 'nao'; texto = 'Você tem ' + brl(Math.max(0, avail)) + ' livres e ele custa ' + brl(m.valor) + ': faltam ' + brl(m.valor - Math.max(0, avail)) + '. ' + alt; }
-  else if (vista.ver === 'ok') { titulo = 'Pode comprar à vista'; cor = 'ok'; texto = 'Depois de pagar, seu saldo não fica abaixo de ' + brl(vista.min) + ' nos próximos 30 dias, já contando as contas.' + (sobra > 0 && m.valor > sobra ? ' Repor esse valor leva uns ' + Math.ceil(m.valor / sobra) + ' meses do que sobra.' : ''); }
-  else if (vista.ver === 'aperta') { titulo = 'Dá, mas fica apertado'; cor = 'aperta'; texto = 'Você tem o valor, mas por volta de ' + dt(vista.minDia).slice(0, 5) + ' sobrariam só ' + brl(vista.min) + '. ' + alt; }
-  else { titulo = 'Melhor não comprar à vista agora'; cor = 'nao'; texto = 'Você tem o valor, mas por volta de ' + dt(vista.minDia).slice(0, 5) + ' faltariam ' + brl(-vista.min) + ' para as contas. ' + alt; }
-  const aviso = vista.fonte === 'nenhuma' ? 'Não há nenhuma entrada anotada para os próximos 30 dias. Se você vai receber algo, lance como previsto ou cadastre em “O que se repete”.' : '';
-  return {E, x, guard, falta, avail, semCompra, vista, n, parc, parcelado, parcOk, parcVer, sobra, gTranq, gRapido, mesesT, mesesR, prazoTxt, titulo, texto, cor, aviso};
+  else if (avail >= m.valor && vista.ver === 'ok') { titulo = 'Pode comprar à vista'; cor = 'ok'; texto = vista.texto + (sobra > 0 && m.valor > sobra ? ' Repor esse valor leva uns ' + Math.ceil(m.valor / sobra) + ' meses do que sobra.' : ''); }
+  else if (avail >= m.valor && vista.ver === 'aperta') { titulo = 'Dá, mas fica apertado'; cor = 'aperta'; texto = vista.texto + ' ' + alt; }
+  else if (parcelado.ver === 'ok') { titulo = avail >= m.valor ? 'Melhor parcelar' : 'Não dá à vista, mas parcelando cabe'; cor = 'aperta'; texto = (avail < m.valor ? vista.texto + ' ' : vista.texto + ' ') + alt; }
+  else if (junt && junt.ver !== 'nao') { titulo = 'Dá se você juntar aos poucos'; cor = 'aperta'; texto = vista.texto + ' ' + alt; }
+  else { titulo = avail >= m.valor ? 'Melhor não comprar agora' : 'Ainda não dá'; cor = 'nao'; texto = vista.texto + ' ' + alt; }
+  const aviso = F.fonte === 'nenhuma' ? 'Não há nenhuma entrada recorrente nem prevista. Cadastre o que você recebe todo mês em “O que se repete”: sem isso eu só enxergo as saídas.' : F.fonte === 'previsto' ? 'As entradas anotadas são avulsas: contam só no dia delas, não nos meses seguintes. Se você recebe algo todo mês, cadastre em “O que se repete” (recorrente).' : '';
+  const inicial = avail >= m.valor && vista.ver !== 'nao' ? 'vista' : parcelado.ver !== 'nao' ? 'parc' : junt && junt.ver !== 'nao' ? 'junt' : 'vista';
+  return {E, x, guard, falta, avail, semCompra, vista, n, parc, parcelado, junt, inicial, parcOk: parcVer !== 'nao', parcVer, sobra, gTranq, gRapido: 0, mesesT, mesesR: null, prazoTxt, titulo, texto, cor, aviso};
 }
 // dicas gerais de economia, escritas a partir dos seus números
 function dicas() {
@@ -992,41 +1016,69 @@ function abrirNovaMeta(id) {
     const q = $('#mn').value, r = await buscarProduto(q); if (!r || !$('#mn') || $('#mn').value !== q) return; metaForm.img = r.img; metaForm.cat = r.cat || '';
     $('#mprod').innerHTML = `<div class="prod"><div class="ico pic">${ic('search')}<img src="${esc(r.img)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></div><div class="t"><b>Foto encontrada</b>${r.cat ? 'Categoria: ' + esc(r.cat) : 'Toque no X se não for esse produto'}</div><button class="btn sm" data-a="tirarfotometa">${ic('x')}</button></div>`; }, 750); });
 }
+// gráfico do saldo: linha cheia = com a compra; tracejada = sem comprar; vermelha = zero
+function grafSaldo(sc) {
+  const Wd = 320, Ht = 130, pl = 6, pr = 6, pt = 14, pb = 20, passo = Math.max(1, Math.ceil(sc.serie.length / 160));
+  const amostra = a => a.filter((_, i) => i % passo === 0 || i === a.length - 1), idx = a => a.map((_, i) => i).filter(i => i % passo === 0 || i === a.length - 1);
+  const todos = sc.serie.concat(sc.base, [0]); let lo = Math.min(...todos), hi = Math.max(...todos); if (hi - lo < 1) hi = lo + 1;
+  const X = i => pl + (Wd - pl - pr) * i / Math.max(1, sc.dias), Y = v => pt + (Ht - pt - pb) * (1 - (v - lo) / (hi - lo));
+  const linha = a => idx(a).map(i => X(i).toFixed(1) + ',' + Y(a[i]).toFixed(1)).join(' ');
+  const mi = sc.serie.indexOf(sc.min), cor = sc.ver === 'ok' ? 'var(--lima)' : sc.ver === 'aperta' ? '#f5c518' : 'var(--verm)';
+  const ponto = mi >= 0 ? `<circle cx="${X(mi).toFixed(1)}" cy="${Y(sc.min).toFixed(1)}" r="4" fill="${cor}"/>` : '';
+  return `<svg viewBox="0 0 ${Wd} ${Ht}" style="width:100%;height:auto;display:block" role="img" aria-label="Saldo ao longo do tempo">
+   ${lo < 0 && hi > 0 ? `<line x1="${pl}" x2="${Wd - pr}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}" stroke="var(--verm)" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/>` : ''}
+   <polyline points="${linha(sc.base)}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 4" opacity=".45"/>
+   <polyline points="${linha(sc.serie)}" fill="none" stroke="${cor}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>${ponto}
+   <text x="${pl}" y="${Ht - 5}" font-size="10" fill="currentColor" opacity=".6">hoje</text>
+   <text x="${Wd - pr}" y="${Ht - 5}" font-size="10" text-anchor="end" fill="currentColor" opacity=".6">${mesLbl(somaDias(isoHoje(), sc.dias))}</text></svg>`;
+}
 function abrirMeta(id) {
   const m = S.metas.find(x => x.id === id); if (!m) return;
   if (m.feita) return abrirNovaMeta(id);
   const a = analisarMeta(m), E = a.E, W = E.W, F = E.F, cor = a.cor === 'ok' ? 'var(--lima)' : a.cor === 'aperta' ? '#f5c518' : 'var(--verm)';
   const lin = (t, val, c) => `<div class="leg"><span>${t}</span><b ${c ? `style="color:${c}"` : ''}>${val}</b></div>`;
+  const corV = v => v === 'ok' ? 'var(--lima)' : v === 'aperta' ? '#f5c518' : 'var(--verm)';
   const contas = F.ev.filter(e => e.v < 0).slice(0, 6).map(e => `${esc(e.nome)} ${brl(-e.v)} (${dt(e.d).slice(0, 5)})`).join(' • ');
-  const ents = F.ev.filter(e => e.v > 0).slice(0, 6).map(e => `${esc(e.nome)} ${brl(e.v)} (${dt(e.d).slice(0, 5)})`).join(' • ');
+  const ents = F.ev.filter(e => e.v > 0).slice(0, 6).map(e => `${esc(e.nome)} ${brl(e.v)} (${dt(e.d).slice(0, 5)}${e.t === 'rot' ? ', recorrente' : ', avulsa'})`).join(' • ');
+  const opcs = [['vista', 'À vista', a.vista], ['parc', 'Parcelado ' + a.n + 'x', a.parcelado], ['junt', 'Juntando', a.junt]].filter(o => a.falta > 0 || o[0] === 'vista');
   folha(`<h3 style="display:flex;align-items:center;gap:12px">${metaIco(m)}<span>${esc(m.nome)}</span></h3>
   <div class="card" style="border-color:${cor};padding:16px 18px;margin-bottom:12px"><div style="font-size:21px;font-weight:600;color:${cor};letter-spacing:-.02em">${esc(a.titulo)}</div><div style="margin-top:8px;font-size:15px;line-height:1.4">${esc(a.texto)}</div></div>
   ${a.aviso ? `<div class="hint" style="margin:0 6px 12px;color:#f5c518">${esc(a.aviso)}</div>` : ''}
   ${F.ev.some(e => e.atras) ? `<div class="hint" style="margin:0 6px 12px;color:#f5c518">Tem previsto atrasado (data que já passou) contando como se fosse pagar/receber hoje. Toque em “Contas e parcelas” ou “Entra” para conferir: confirme ou apague o que não vale mais.</div>` : ''}
+  ${a.falta > 0 ? `<div class="card" style="padding:14px 16px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:10px">Como fica seu saldo se você comprar</div>
+   <div class="seg" id="mseg">${opcs.map(o => `<button data-c="${o[0]}" class="${o[0] === a.inicial ? 'on' : ''}">${o[1]}</button>`).join('')}</div>
+   <div id="mcen" style="margin-top:12px"></div></div>` : ''}
   <div class="card" style="padding:8px 18px;margin-bottom:12px">
    ${lin('Preço', brl(m.valor))}${a.guard > 0 ? lin('Já separado', brl(a.guard)) : ''}
    ${lin('Seu saldo livre hoje', brl(a.avail), a.avail < 0 ? 'var(--verm)' : '')}
-   <div class="tap" data-a="fluxo" data-t="E" data-id="${esc(m.id)}">${lin('Entra nos próximos 30 dias ' + ic('right'), '+' + brl(F.entra), F.entra ? 'var(--lima)' : '')}</div>
+   <div class="tap" data-a="fluxo" data-t="E" data-id="${esc(m.id)}">${lin('Entra todo mês (recorrente) ' + ic('right'), '+' + brl(F.entRecMes), F.entRecMes ? 'var(--lima)' : '')}</div>
+   ${F.entAvul ? lin('Entradas avulsas previstas (30 dias)', '+' + brl(F.entAvul)) : ''}
    <div class="tap" data-a="fluxo" data-t="S" data-id="${esc(m.id)}">${lin('Contas e parcelas (30 dias) ' + ic('right'), '−' + brl(F.saiConta))}</div>
    ${W.varUser != null ? `<div class="tap" data-a="vardia" data-id="${esc(m.id)}">${lin('Reserva para o dia a dia ' + ic('right'), '−' + brl(F.saiVar))}</div>` : ''}
-   ${lin('Sobra por mês', brl(a.sobra), a.sobra < 0 ? 'var(--verm)' : 'var(--lima)')}
-   ${lin('Daqui a 30 dias (sem comprar)', brl(a.semCompra.fim), a.semCompra.fim < 0 ? 'var(--verm)' : '')}
-   <div class="hint" style="margin:4px 0 6px">Conta só o que está anotado: seu saldo, os previstos e o que você cadastrou em “O que se repete”, nos próximos 30 dias. Nada é estimado.${W.varUser == null ? ` <button class="lnk" data-a="vardia" data-id="${esc(m.id)}">Reservar um valor para o dia a dia (opcional)</button>` : ''}</div>
+   ${lin('Sobra por mês (só o recorrente)', brl(a.sobra), a.sobra < 0 ? 'var(--verm)' : 'var(--lima)')}
+   <div class="hint" style="margin:4px 0 6px">Só o que se repete conta como certeza nos meses à frente. Entrada avulsa que já caiu está no seu saldo; a que ainda vai cair entra só no dia dela. Nada é estimado.${W.varUser == null ? ` <button class="lnk" data-a="vardia" data-id="${esc(m.id)}">Reservar um valor para o dia a dia (opcional)</button>` : ''}</div>
   </div>
-  ${a.falta > 0 ? `<div class="card" style="padding:12px 18px;margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Parcelar em ${a.n}x de ${brl(a.parc)}</span>${chip(a.parcVer)}</div>
-   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px"><span>${a.gTranq ? 'Guardar ' + brl(a.gTranq) + '/mês: ' + a.mesesT + (a.mesesT === 1 ? ' mês' : ' meses') : 'Guardar aos poucos'}</span>${chip(a.gTranq ? 'ok' : 'nao')}</div>
-   ${a.prazoTxt ? `<div class="mut" style="font-size:12.5px;margin-top:8px">${esc(a.prazoTxt)}</div>` : ''}</div>` : ''}
+  ${a.prazoTxt ? `<div class="hint" style="margin:0 6px 12px">${esc(a.prazoTxt)}</div>` : ''}
   <div style="display:grid;gap:8px;margin-bottom:12px">
    ${a.falta > 0 && a.gTranq ? `<button class="btn pri full" data-a="separar" data-id="${esc(m.id)}" data-v="${a.gTranq}">Separar ${brl(a.gTranq)} numa carteira só dessa meta</button>` : ''}
    <button class="btn bco full" data-a="comprei" data-id="${esc(m.id)}">Já comprei (lançar a saída)</button></div>
   <details class="card" style="padding:12px 18px;margin-bottom:12px"><summary style="cursor:pointer;font-weight:600">Como calculei</summary>
    <div class="mut" style="font-size:13px;margin-top:10px;line-height:1.5">
-   Parto do seu saldo livre de hoje e somo só o que está anotado para os próximos 30 dias, cada coisa na sua data.<br>
-   Entradas: ${ents || 'nenhuma anotada'}.<br>
+   Parto do seu saldo livre de hoje e vou dia a dia: somo cada previsto na sua data e repito, mês após mês, só o que você cadastrou em “O que se repete”. À vista olho 3 meses; parcelado, até a última parcela; juntando, até o mês da compra.<br>
+   Entradas nos próximos 30 dias: ${ents || 'nenhuma anotada'}.<br>
    Contas e parcelas: ${contas || 'nenhuma'}.<br>
    ${W.varUser != null ? 'Reserva para o dia a dia que você definiu: ' + brl(W.varUser) + ' por mês.<br>' : 'Gasto do dia a dia não entra (só o que for anotado).<br>'}
-   “Dá” quando o saldo, dia a dia, nunca fica abaixo de ${brl(a.vista.reserva)}. Parcelar “dá” quando a parcela cabe na metade do que sobra por mês.${E.pouco ? '<br>Ainda tenho poucos lançamentos seus, então os números são aproximados.' : ''}</div></details>
+   “Dá” quando o saldo nunca fica abaixo de ${brl(a.vista.reserva)}; abaixo disso mas positivo é “apertado”.${E.pouco ? '<br>Ainda tenho poucos lançamentos seus, então os números são aproximados.' : ''}</div></details>
   <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Fechar</button><button class="btn" style="flex:1" data-a="editmeta" data-id="${esc(m.id)}">Editar meta</button></div>`);
+  if (a.falta > 0) {
+    const pintar = c => { const sc = c === 'parc' ? a.parcelado : c === 'junt' ? a.junt : a.vista;
+      $('#mseg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.c === c));
+      $('#mcen').innerHTML = !sc ? `<div class="mut" style="font-size:14px;line-height:1.45">${a.sobra > 0 ? 'Juntar levaria mais de 3 anos no que sobra hoje.' : 'Pelo que está anotado, não sobra dinheiro por mês para juntar. Cadastre suas entradas em “O que se repete” ou reduza as saídas.'}</div>` :
+      `${grafSaldo(sc)}<div class="mut" style="font-size:11.5px;margin:2px 2px 8px">Linha cheia: com a compra. Tracejada: sem comprar. Ponto: o pior momento.</div>
+       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><b style="color:${corV(sc.ver)}">${sc.ver === 'ok' ? 'Cabe' : sc.ver === 'aperta' ? 'Apertado' : 'Não cabe'}</b><span class="mut" style="font-size:13px">menor saldo ${brl(sc.min)} • ${mesLbl(sc.minDia)}</span></div>
+       <div style="margin-top:6px;font-size:14px;line-height:1.4">${esc(sc.texto)}</div>`; };
+    $('#mseg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) pintar(b.dataset.c); }); pintar(a.inicial);
+  }
 }
 function abrirVarDia(metaId) {
   const W = estat().W, cur = W.varUser;

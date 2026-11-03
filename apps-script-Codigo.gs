@@ -28,7 +28,7 @@ const PADRAO = {mercado:'Mercado',supermercado:'Mercado',feira:'Mercado',uber:'T
 //          9 n | 10 total | 11 atualizado | 12 excluido | 13 comprovante | 14 previsto | 15 imagem | 16 pagador (vazio = quem registra; 'pai' = pago pelo pai)
 const H = ['id','data','tipo','valor','categoria','descricao','carteira','destino','grupo','n','total','atualizado','excluido','comprovante','previsto','imagem','pagador'];
 const NC = H.length;
-const VERSAO = 9;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
+const VERSAO = 10;   // o app confere isto para avisar quando o código do Apps Script está desatualizado
 
 /* ---------- INSTALAÇÃO ---------- */
 function instalar() {
@@ -982,12 +982,30 @@ function sync_(desde) {
   const agora = Date.now();
   return { ver: VERSAO, agora: agora, linhas: rows_().filter(r => Number(r[11]) > desde), carteiras: carteiras_(), orcamentos: orc_(), metas: metas_(), rotinas: rotinas_(), socios: socios_(), repasses: repasses_() };
 }
+// ---- foto de produto: o app pede pelo nome; o Apps Script busca (o navegador do celular não consegue) e guarda em cache ----
+function fotoProduto_(b) {
+  const q = String(b.q || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (q.length < 2) return { ok: 1, img: '' };
+  const cache = CacheService.getScriptCache(), ck = 'foto:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, q.toLowerCase())).slice(0, 40);
+  const guardado = cache.get(ck); if (guardado !== null) return { ok: 1, img: guardado };
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+  const pegar = url => { try { const r = UrlFetchApp.fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'pt-BR,pt;q=0.9' }, muteHttpExceptions: true, followRedirects: true }); return r.getResponseCode() === 200 ? r.getContentText() : ''; } catch (e) { return ''; } };
+  const g = /https:\/\/encrypted-tbn\d\.gstatic\.com\/(?:shopping|images)\?q=tbn:[A-Za-z0-9_\-]+/;
+  let img = '', h = pegar('https://www.google.com/search?tbm=shop&hl=pt-BR&gl=br&q=' + encodeURIComponent(q)), m = h.match(g);
+  if (m) img = m[0];
+  if (!img) { h = pegar('https://www.google.com/search?tbm=isch&hl=pt-BR&gl=br&q=' + encodeURIComponent(q)); m = h.match(g); if (m) img = m[0]; }
+  if (!img) { h = pegar('https://www.bing.com/images/search?form=HDRSC3&q=' + encodeURIComponent(q)); m = h.match(/&quot;turl&quot;:&quot;(.*?)&quot;/) || h.match(/"turl":"(https:[^"]+)"/); if (m) img = m[1].replace(/&amp;/g, '&').replace(/\\u0026/g, '&'); }
+  if (!/^https:\/\//.test(img)) img = '';
+  try { cache.put(ck, img, img ? 21600 : 600); } catch (e) {}
+  return { ok: 1, img: img };
+}
 function api_(b) {
   if (b.acao === 'sync') return sync_(Number(b.desde || 0));
   if (b.acao === 'resumo') { const x = saldos_(); return { ok: 1, saldos: x.s, total: x.total, pS: x.pS, pE: x.pE, liquido: x.total - x.pS }; }
   if (b.acao === 'agenda') return agenda_();
   if (b.acao === 'entradas') return { ok: 1, itens: entradas_(b.mes) };
   if (b.acao === 'candidatos') return candidatos_(b);
+  if (b.acao === 'foto') return fotoProduto_(b);                              // foto de produto pelo nome (Google Shopping/Imagens, depois Bing)
   if (b.acao === 'salario_recebido') return salarioRecebido_(b);
   if (b.acao === 'distribuir') return Object.assign(distribuir_(b), sync_(Number(b.desde || 0)));
   if (b.acao === 'texto') return texto_api_(b.texto, b.id);          // "Addit": mesma sintaxe do bot
