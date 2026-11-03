@@ -644,10 +644,10 @@ function janela() {
 // o que deve entrar e sair nos próximos 30 dias (sem nenhuma compra nova)
 function fluxo30(W) {
   const h = W.h, lim = somaDias(h, 30), ev = [], rots = S.rotinas.filter(r => r.ativa && r.valor > 0);
-  pendentes().filter(r => r.data <= lim && !(PAIS && r.pag === 'pai')).forEach(r => ev.push({d: r.data < h ? h : r.data, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc || r.cat, t: 'prev'}));
+  pendentes().filter(r => r.data <= lim && !(PAIS && r.pag === 'pai')).forEach(r => ev.push({d: r.data < h ? h : r.data, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc || r.cat, t: 'prev', id: r.id, atras: r.data < h ? r.data : '', parc: r.n ? r.n + '/' + r.total : ''}));
   rots.forEach(r => ocorrencias(r, lim).forEach(d => {
     if (r.freq === 'mes' && ev.some(x => x.t === 'prev' && norm(x.nome) === norm(r.desc) && Math.abs((new Date(x.d) - new Date(d)) / 864e5) <= 4)) return;   // já anotado como previsto
-    ev.push({d, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc, t: 'rot'}); }));
+    ev.push({d, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc, t: 'rot', rid: r.id}); }));
   const rk = new Set(rots.map(r => norm(r.desc)));
   W.rec.forEach(c => {
     if (rk.has(c.k) || ev.some(x => norm(x.nome) === c.k)) return;
@@ -1004,11 +1004,12 @@ function abrirMeta(id) {
   folha(`<h3 style="display:flex;align-items:center;gap:12px">${metaIco(m)}<span>${esc(m.nome)}</span></h3>
   <div class="card" style="border-color:${cor};padding:16px 18px;margin-bottom:12px"><div style="font-size:21px;font-weight:600;color:${cor};letter-spacing:-.02em">${esc(a.titulo)}</div><div style="margin-top:8px;font-size:15px;line-height:1.4">${esc(a.texto)}</div></div>
   ${a.aviso ? `<div class="hint" style="margin:0 6px 12px;color:#f5c518">${esc(a.aviso)}</div>` : ''}
+  ${F.ev.some(e => e.atras) ? `<div class="hint" style="margin:0 6px 12px;color:#f5c518">Tem previsto atrasado (data que já passou) contando como se fosse pagar/receber hoje. Toque em “Sai” ou “Entra” para conferir: confirme ou apague o que não vale mais.</div>` : ''}
   <div class="card" style="padding:8px 18px;margin-bottom:12px">
    ${lin('Preço', brl(m.valor))}${a.guard > 0 ? lin('Já separado', brl(a.guard)) : ''}
    ${lin('Seu saldo livre hoje', brl(a.avail), a.avail < 0 ? 'var(--verm)' : '')}
-   ${lin('Entra nos próximos 30 dias', '+' + brl(F.entra), F.entra ? 'var(--lima)' : '')}
-   ${lin('Sai nos próximos 30 dias', '−' + brl(F.saiConta + F.saiVar))}
+   <div class="tap" data-a="fluxo" data-t="E" data-id="${esc(m.id)}">${lin('Entra nos próximos 30 dias ' + ic('right'), '+' + brl(F.entra), F.entra ? 'var(--lima)' : '')}</div>
+   <div class="tap" data-a="fluxo" data-t="S" data-id="${esc(m.id)}">${lin('Sai nos próximos 30 dias ' + ic('right'), '−' + brl(F.saiConta + F.saiVar))}</div>
    ${lin('Sobra por mês', brl(a.sobra), a.sobra < 0 ? 'var(--verm)' : 'var(--lima)')}
    ${lin('Daqui a 30 dias (sem comprar)', brl(a.semCompra.fim), a.semCompra.fim < 0 ? 'var(--verm)' : '')}
   </div>
@@ -1026,6 +1027,19 @@ function abrirMeta(id) {
    Contas e parcelas nos próximos 30 dias: ${contas || 'nenhuma'}.<br>
    “Dá” quando o saldo, dia a dia, nunca fica abaixo de ${brl(a.vista.reserva)}. Parcelar “dá” quando a parcela cabe na metade do que sobra por mês.${E.pouco ? '<br>Ainda tenho poucos lançamentos seus, então os números são aproximados.' : ''}</div></details>
   <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Fechar</button><button class="btn" style="flex:1" data-a="editmeta" data-id="${esc(m.id)}">Editar meta</button></div>`);
+}
+// detalhe do que entra/sai nos próximos 30 dias (cada item com a origem, e os previstos tocáveis para corrigir)
+function abrirFluxo(tipo, metaId) {
+  const E = estat(), F = E.F, W = E.W, ent = tipo === 'E', its = F.ev.filter(e => ent ? e.v > 0 : e.v < 0);
+  const nomeT = {prev: 'previsto anotado', rot: 'O que se repete', prov: 'conta que se repete todo mês (detectada)', parc: 'parcela'};
+  const linha = e => `<div class="row" ${e.id ? `data-a="det" data-id="${esc(e.id)}"` : e.rid ? `data-a="editrotina" data-id="${esc(e.rid)}"` : 'style="cursor:default"'}><div class="t"><b>${esc(e.nome)}${e.parc ? ' • ' + e.parc : ''}</b><span>${dt(e.d).slice(0, 5)} • ${nomeT[e.t] || e.t}${e.atras ? ` • <b style="color:#f5c518">atrasado desde ${dt(e.atras)}</b>` : ''}</span></div><div class="v ${ent ? 'lima' : ''}">${ent ? '+' : '−'}${brl(Math.abs(e.v))}</div></div>`;
+  const extra = ent ? (F.entDia ? `<div class="row" style="cursor:default"><div class="t"><b>Estimativa de entradas</b><span>ritmo dos últimos ${W.dias} dias (não tem renda cadastrada)</span></div><div class="v lima">+${brl(F.entDia * 30)}</div></div>` : '')
+    : `<div class="row" style="cursor:default"><div class="t"><b>Gasto do dia a dia</b><span>média de ${brl(W.varDia)}/dia nos últimos ${W.dias} dias (desde ${dt(W.desde)})</span></div><div class="v">−${brl(F.saiVar)}</div></div>`;
+  const tot = ent ? F.entra : F.saiConta + F.saiVar;
+  folha(`<h3>${ent ? 'Entra' : 'Sai'} nos próximos 30 dias</h3><div class="hint" style="margin-top:-8px">Total ${brl(tot)}. ${ent ? '' : 'Toque num previsto para corrigir a data, o valor ou apagar. '}Previsto atrasado conta como se fosse hoje.</div>
+  <div class="card" style="padding:6px 18px;margin-bottom:12px">${its.map(linha).join('')}${extra}${!its.length && !extra ? '<div class="empty">Nada.</div>' : ''}</div>
+  ${!ent && W.grandes.length ? `<div class="hint" style="margin:0 6px 12px">Ficaram de fora do dia a dia (compras grandes únicas): ${W.grandes.slice(0, 4).map(r => esc(r.desc || r.cat) + ' ' + brl(r.valor)).join(', ')}.</div>` : ''}
+  <button class="btn full" data-a="meta" data-id="${esc(metaId)}">Voltar para a meta</button>`);
 }
 /* ---- rotinas: o que se repete (alimenta as previsões; não lança nada sozinho) ---- */
 function abrirRotina(id) {
@@ -1345,6 +1359,7 @@ async function acao(a, el) {
   else if (a === 'pvmodo') { S.pv = d.v; render(); }
   else if (a === 'pvm') { S.pvm = Math.max(0, (S.pvm || 0) + Number(d.d)); render(); }
   else if (a === 'qenviar') await enviarQuick();
+  else if (a === 'fluxo') abrirFluxo(d.t, d.id);
   else if (a === 'novarotina') abrirRotina();
   else if (a === 'editrotina') abrirRotina(d.id);
   else if (a === 'rotdel') { fechar(); await fazer([{op: 'rotinadel', id: d.id}], 'Rotina apagada'); }
