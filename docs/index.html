@@ -639,6 +639,7 @@ function achaRecorrentes(base) {
     return {k: norm(a[0].desc || a[0].cat), desc: a[0].desc || a[0].cat, valor: r2(mediana(vs)), dia: Math.round(mediana(a.map(r => Number(r.data.slice(8))))), cat: a[0].cat};
   }).filter(Boolean);
 }
+const varMesUser = () => { try { const v = localStorage.getItem(KP('fin_vardia')); return v === null || v === '' ? null : Number(v); } catch (e) { return null; } };
 // ---- números de base: janela móvel dos últimos 60 dias (ou desde o 1º lançamento), atualizada a cada lançamento ----
 function janela() {
   const h = isoHoje(), ym = h.slice(0, 7);
@@ -651,16 +652,18 @@ function janela() {
   const vari = sai.filter(r => !r.grupo && !ks.has(norm(r.desc || r.cat)));
   const corte = Math.max(300, mediana(vari.map(r => r.valor)) * 5);       // compras grandes e únicas (ex.: um eletrônico) não viram "gasto de todo dia"
   const grandes = vari.filter(r => r.valor > corte), comuns = vari.filter(r => r.valor <= corte);
-  const varDia = comuns.reduce((a, r) => a + r.valor, 0) / dias;
+  const varCalc = comuns.reduce((a, r) => a + r.valor, 0) / dias, varUser = varMesUser(), varDia = varUser != null ? varUser / 30.4 : varCalc;
   const rendaObs = ent.reduce((a, r) => a + r.valor, 0) / dias * 30.4;
-  return {h, ym, desde, dias, base, rec, ks, varDia, grandes, rendaObs, nLanc: rows.length, pouco: dias < 14 || rows.length < 8};
+  return {h, ym, desde, dias, base, rec, ks, varDia, varCalc, varUser, grandes, rendaObs, nLanc: rows.length, pouco: dias < 14 || rows.length < 8};
 }
 // o que deve entrar e sair nos próximos 30 dias (sem nenhuma compra nova)
 function fluxo30(W) {
   const h = W.h, lim = somaDias(h, 30), ev = [], rots = S.rotinas.filter(r => r.ativa && r.valor > 0);
   pendentes().filter(r => r.data <= lim && !(PAIS && r.pag === 'pai')).forEach(r => ev.push({d: r.data < h ? h : r.data, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc || r.cat, t: 'prev', id: r.id, atras: r.data < h ? r.data : '', parc: r.n ? r.n + '/' + r.total : ''}));
   rots.forEach(r => ocorrencias(r, lim).forEach(d => {
-    if (r.freq === 'mes' && ev.some(x => x.t === 'prev' && norm(x.nome) === norm(r.desc) && Math.abs((new Date(x.d) - new Date(d)) / 864e5) <= 4)) return;   // já anotado como previsto
+    const sinal = r.tipo === 'E' ? 1 : -1, tk = toks(r.desc).filter(w => w.length > 2);
+    if (r.freq !== 'dia' && ev.some(x => x.t === 'prev' && Math.sign(x.v) === sinal && Math.abs((new Date(x.d) - new Date(d)) / 864e5) <= (r.freq === 'mes' ? 5 : 2) &&
+      (toks(x.nome).some(w => w.length > 2 && tk.includes(w)) || Math.abs(Math.abs(x.v) - r.valor) <= Math.max(1, r.valor * .01)))) return;   // já anotado como previsto: não conta duas vezes
     ev.push({d, v: r.tipo === 'E' ? r.valor : -r.valor, nome: r.desc, t: 'rot', rid: r.id}); }));
   const rk = new Set(rots.map(r => norm(r.desc)));
   W.rec.forEach(c => {
@@ -1023,9 +1026,11 @@ function abrirMeta(id) {
    ${lin('Preço', brl(m.valor))}${a.guard > 0 ? lin('Já separado', brl(a.guard)) : ''}
    ${lin('Seu saldo livre hoje', brl(a.avail), a.avail < 0 ? 'var(--verm)' : '')}
    <div class="tap" data-a="fluxo" data-t="E" data-id="${esc(m.id)}">${lin('Entra nos próximos 30 dias ' + ic('right'), '+' + brl(F.entra), F.entra ? 'var(--lima)' : '')}</div>
-   <div class="tap" data-a="fluxo" data-t="S" data-id="${esc(m.id)}">${lin('Sai nos próximos 30 dias ' + ic('right'), '−' + brl(F.saiConta + F.saiVar))}</div>
+   <div class="tap" data-a="fluxo" data-t="S" data-id="${esc(m.id)}">${lin('Contas e parcelas (30 dias) ' + ic('right'), '−' + brl(F.saiConta))}</div>
+   <div class="tap" data-a="vardia" data-id="${esc(m.id)}">${lin('Dia a dia (' + (W.varUser != null ? 'você definiu' : 'estimado') + ') ' + ic('right'), '−' + brl(F.saiVar))}</div>
    ${lin('Sobra por mês', brl(a.sobra), a.sobra < 0 ? 'var(--verm)' : 'var(--lima)')}
    ${lin('Daqui a 30 dias (sem comprar)', brl(a.semCompra.fim), a.semCompra.fim < 0 ? 'var(--verm)' : '')}
+   <div class="hint" style="margin:4px 0 6px">O “saldo previsto” da tela inicial conta só o que está anotado. Aqui também entra o gasto do dia a dia${W.varUser != null ? ' que você definiu' : ', estimado pelo que você gastou desde ' + dt(W.desde)}. Toque em “Dia a dia” para ajustar.</div>
   </div>
   ${a.falta > 0 ? `<div class="card" style="padding:12px 18px;margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Parcelar em ${a.n}x de ${brl(a.parc)}</span>${chip(a.parcVer)}</div>
    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px"><span>${a.gTranq ? 'Guardar ' + brl(a.gTranq) + '/mês: ' + a.mesesT + (a.mesesT === 1 ? ' mês' : ' meses') : 'Guardar aos poucos'}</span>${chip(a.gTranq ? 'ok' : 'nao')}</div>
@@ -1042,13 +1047,20 @@ function abrirMeta(id) {
    “Dá” quando o saldo, dia a dia, nunca fica abaixo de ${brl(a.vista.reserva)}. Parcelar “dá” quando a parcela cabe na metade do que sobra por mês.${E.pouco ? '<br>Ainda tenho poucos lançamentos seus, então os números são aproximados.' : ''}</div></details>
   <div style="display:flex;gap:10px"><button class="btn" data-a="fechar">Fechar</button><button class="btn" style="flex:1" data-a="editmeta" data-id="${esc(m.id)}">Editar meta</button></div>`);
 }
+function abrirVarDia(metaId) {
+  const W = estat().W, cur = W.varUser;
+  folha(`<h3>Gasto do dia a dia</h3><div class="hint" style="margin-top:-8px">Quanto você costuma gastar por mês fora das contas fixas e parcelas (mercado, comida, transporte, lazer…). Pelos seus lançamentos desde ${dt(W.desde)} (${W.dias} dias), dá uns <b style="color:var(--tx)">${brl(W.varCalc * 30.4)}</b> por mês${W.dias < 30 ? ', mas ainda é pouco tempo de anotação' : ''}.</div>
+  <div class="f"><label>Por mês</label><input id="vdm" inputmode="decimal" value="${cur != null ? String(cur).replace('.', ',') : ''}" placeholder="${String(r2(W.varCalc * 30.4)).replace('.', ',')}" style="font-size:26px;font-weight:600;padding:14px 18px"></div>
+  <div class="hint">Deixe em branco para o app calcular sozinho pelos seus lançamentos.</div>
+  <div style="display:flex;gap:10px"><button class="btn" data-a="meta" data-id="${esc(metaId || '')}">Voltar</button><button class="btn pri" style="flex:1" data-a="okvardia" data-id="${esc(metaId || '')}">Salvar</button></div>`);
+}
 // detalhe do que entra/sai nos próximos 30 dias (cada item com a origem, e os previstos tocáveis para corrigir)
 function abrirFluxo(tipo, metaId) {
   const E = estat(), F = E.F, W = E.W, ent = tipo === 'E', its = F.ev.filter(e => ent ? e.v > 0 : e.v < 0);
   const nomeT = {prev: 'previsto anotado', rot: 'O que se repete', prov: 'conta que se repete todo mês (detectada)', parc: 'parcela'};
   const linha = e => `<div class="row" ${e.id ? `data-a="det" data-id="${esc(e.id)}"` : e.rid ? `data-a="editrotina" data-id="${esc(e.rid)}"` : 'style="cursor:default"'}><div class="t"><b>${esc(e.nome)}${e.parc ? ' • ' + e.parc : ''}</b><span>${dt(e.d).slice(0, 5)} • ${nomeT[e.t] || e.t}${e.atras ? ` • <b style="color:#f6cf7a">atrasado desde ${dt(e.atras)}</b>` : ''}</span></div><div class="v ${ent ? 'lima' : ''}">${ent ? '+' : '−'}${brl(Math.abs(e.v))}</div></div>`;
   const extra = ent ? (F.entDia ? `<div class="row" style="cursor:default"><div class="t"><b>Estimativa de entradas</b><span>ritmo dos últimos ${W.dias} dias (não tem renda cadastrada)</span></div><div class="v lima">+${brl(F.entDia * 30)}</div></div>` : '')
-    : `<div class="row" style="cursor:default"><div class="t"><b>Gasto do dia a dia</b><span>média de ${brl(W.varDia)}/dia nos últimos ${W.dias} dias (desde ${dt(W.desde)})</span></div><div class="v">−${brl(F.saiVar)}</div></div>`;
+    : `<div class="row" data-a="vardia" data-id="${esc(metaId)}"><div class="t"><b>Gasto do dia a dia ${ic('right')}</b><span>${W.varUser != null ? 'você definiu ' + brl(W.varUser) + '/mês' : 'média de ' + brl(W.varDia) + '/dia desde ' + dt(W.desde) + ' • toque para ajustar'}</span></div><div class="v">−${brl(F.saiVar)}</div></div>`;
   const tot = ent ? F.entra : F.saiConta + F.saiVar;
   folha(`<h3>${ent ? 'Entra' : 'Sai'} nos próximos 30 dias</h3><div class="hint" style="margin-top:-8px">Total ${brl(tot)}. ${ent ? '' : 'Toque num previsto para corrigir a data, o valor ou apagar. '}Previsto atrasado conta como se fosse hoje.</div>
   <div class="card" style="padding:6px 18px;margin-bottom:12px">${its.map(linha).join('')}${extra}${!its.length && !extra ? '<div class="empty">Nada.</div>' : ''}</div>
@@ -1374,6 +1386,10 @@ async function acao(a, el) {
   else if (a === 'pvm') { S.pvm = Math.max(0, (S.pvm || 0) + Number(d.d)); render(); }
   else if (a === 'qenviar') await enviarQuick();
   else if (a === 'fluxo') abrirFluxo(d.t, d.id);
+  else if (a === 'vardia') abrirVarDia(d.id);
+  else if (a === 'okvardia') { const t = $('#vdm').value.trim(), v = num(t); if (t && !(v >= 0)) return aviso('Valor inválido.', 'bad');
+    try { if (t) localStorage.setItem(KP('fin_vardia'), String(v)); else localStorage.removeItem(KP('fin_vardia')); } catch (e) {}
+    aviso(t ? 'Dia a dia: ' + brl(v) + ' por mês' : 'O app volta a calcular sozinho', 'good'); if (d.id) abrirMeta(d.id); else fechar(); render(); }
   else if (a === 'novarotina') abrirRotina();
   else if (a === 'editrotina') abrirRotina(d.id);
   else if (a === 'rotdel') { fechar(); await fazer([{op: 'rotinadel', id: d.id}], 'Rotina apagada'); }
